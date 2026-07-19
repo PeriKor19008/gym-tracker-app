@@ -1,0 +1,11 @@
+# JetBrains IDEs
+.idea/
+*.iml
+
+# Database binaries (we commit the .sql blueprints instead)
+*.db
+*.sqlite
+*.sqlite3
+
+# OS generated files
+.DS_Store
