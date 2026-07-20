@@ -289,14 +289,24 @@ class DatabaseHelper {
     );
   }
   // Create a new day inside a program routine
-  Future<void> createProgramDay(int programId, String name) async {
+  // Create a new day inside a program routine, including the required day_number
+  Future<void> createProgramDay(int programId, String dayName) async {
     Database db = await database;
 
+    // 1. Count how many days currently exist for this program to determine the next day_number
+    List<Map<String, dynamic>> existingDays = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM Program_Days WHERE program_id = ?',
+      [programId],
+    );
+    int nextDayNumber = (Sqflite.firstIntValue(existingDays) ?? 0) + 1;
+
+    // 2. Insert with the required day_number column included
     await db.insert(
       'Program_Days',
       {
         'program_id': programId,
-        'name': name,
+        'day_name': dayName,
+        'day_number': nextDayNumber, // Satisfies the NOT NULL constraint
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );

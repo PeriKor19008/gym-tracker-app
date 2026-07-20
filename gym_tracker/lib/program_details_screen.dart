@@ -41,8 +41,9 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
   }
 
   // --- NEW: The Dialog to Add a Day ---
+  // --- UPDATED: Using TextEditingController for bulletproof input ---
   Future<void> _showAddDayDialog() async {
-    String dayName = '';
+    final TextEditingController nameController = TextEditingController();
 
     await showDialog(
       context: context,
@@ -51,13 +52,14 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
           backgroundColor: Colors.grey[900],
           title: const Text('Add Routine Day'),
           content: TextField(
+            controller: nameController,
+            autofocus: true,
             decoration: InputDecoration(
               labelText: 'Day Name (e.g. Push, Upper Body)',
               filled: true,
               fillColor: Colors.grey[800],
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
             ),
-            onChanged: (val) => dayName = val,
           ),
           actions: [
             TextButton(
@@ -67,13 +69,28 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
               onPressed: () async {
-                if (dayName.trim().isNotEmpty) {
-                  // 1. Save to SQLite
-                  await DatabaseHelper.instance.createProgramDay(widget.program['id'], dayName.trim());
-                  // 2. Close Dialog
-                  Navigator.pop(context);
-                  // 3. Refresh UI
-                  _loadProgramData();
+                String dayName = nameController.text.trim();
+                if (dayName.isNotEmpty) {
+                  try {
+                    // Safely parse the program ID to an integer
+                    int programId = int.parse(widget.program['id'].toString());
+
+                    // 1. Save to SQLite
+                    await DatabaseHelper.instance.createProgramDay(programId, dayName);
+
+                    // 2. Close Dialog
+                    if (context.mounted) Navigator.pop(context);
+
+                    // 3. Refresh UI
+                    _loadProgramData();
+                  } catch (e) {
+                    // Show the exact error on screen so we can see it!
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+                      );
+                    }
+                  }
                 }
               },
               child: const Text('Save', style: TextStyle(color: Colors.white)),
@@ -124,7 +141,7 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        day['name'] ?? 'Day ${index + 1}',
+                        day['day_name'] ?? 'Day ${index + 1}',
                         style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueAccent),
                       ),
                       ElevatedButton.icon(
