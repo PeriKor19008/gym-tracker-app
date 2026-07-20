@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'database_helper.dart';
+import 'exercise_library.dart';
 
 class ProgramDetailsScreen extends StatefulWidget {
   final Map<String, dynamic> program;
@@ -182,10 +183,31 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
 
                   // Add Exercise to Day Button
                   TextButton.icon(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Add Exercise to Routine Day coming next!')),
+                    onPressed: () async {
+                      // 1. Open Exercise Library and wait for selection
+                      final selectedExercise = await Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const ExerciseLibraryScreen()),
                       );
+
+                      // 2. If an exercise was selected, save it to this day
+                      if (selectedExercise != null) {
+                        try {
+                          int programDayId = int.parse(day['id'].toString());
+                          int exerciseId = int.parse(selectedExercise['id'].toString());
+
+                          await DatabaseHelper.instance.addExerciseToProgramDay(programDayId, exerciseId);
+
+                          // 3. Refresh the UI to display the new exercise
+                          _loadProgramData();
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Error adding exercise: $e'), backgroundColor: Colors.red),
+                            );
+                          }
+                        }
+                      }
                     },
                     icon: const Icon(Icons.add_circle_outline, color: Colors.grey, size: 18),
                     label: const Text('Add Exercise', style: TextStyle(color: Colors.grey)),

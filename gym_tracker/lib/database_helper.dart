@@ -311,4 +311,27 @@ class DatabaseHelper {
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
+
+  // Link an exercise to a specific program day with the required order_number
+  Future<void> addExerciseToProgramDay(int programDayId, int exerciseId) async {
+    Database db = await database;
+
+    // 1. Calculate the next order number for this routine day
+    List<Map<String, dynamic>> existing = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM Program_Day_Exercises WHERE program_day_id = ?',
+      [programDayId],
+    );
+    int nextOrderNumber = (Sqflite.firstIntValue(existing) ?? 0) + 1;
+
+    // 2. Insert with the order_number included to satisfy the constraint
+    await db.insert(
+      'Program_Day_Exercises',
+      {
+        'program_day_id': programDayId,
+        'exercise_id': exerciseId,
+        'order_number': nextOrderNumber,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
 }
