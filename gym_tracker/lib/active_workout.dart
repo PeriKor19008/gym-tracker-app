@@ -4,6 +4,7 @@ import 'exercise_library.dart';
 import 'database_helper.dart';
 
 // Data model for a single set
+// Data model for a single set
 class WorkoutSet {
   TextEditingController weightController = TextEditingController();
   TextEditingController repsController = TextEditingController();
@@ -13,13 +14,23 @@ class WorkoutSet {
 // Data model for an exercise added to the workout
 class ActiveExercise {
   final Map<String, dynamic> exerciseData;
-  List<WorkoutSet> sets = [WorkoutSet()]; // Always start with 1 set
+  List<WorkoutSet> sets = []; // Will be populated dynamically based on targets
 
-  ActiveExercise(this.exerciseData);
+  ActiveExercise(this.exerciseData, {int targetSets = 3, int targetReps = 10}) {
+    // Automatically generate rows matching the target set count, pre-filling reps!
+    int setsCount = targetSets > 0 ? targetSets : 3;
+    String defaultReps = targetReps > 0 ? targetReps.toString() : '';
+
+    for (int i = 0; i < setsCount; i++) {
+      var workoutSet = WorkoutSet();
+      workoutSet.repsController.text = defaultReps; // Pre-fill target reps
+      sets.add(workoutSet);
+    }
+  }
 }
-
 class ActiveWorkoutScreen extends StatefulWidget {
-  const ActiveWorkoutScreen({super.key});
+  final int? sessionId; // Optional session ID passed from a routine
+  const ActiveWorkoutScreen({super.key, this.sessionId});
 
   @override
   State<ActiveWorkoutScreen> createState() => _ActiveWorkoutScreenState();
@@ -27,6 +38,29 @@ class ActiveWorkoutScreen extends StatefulWidget {
 
 class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   final List<ActiveExercise> _workoutExercises = [];
+
+  @override
+  void initState() {
+    super.initState();
+    // If a sessionId was passed from a program, load those exercises automatically!
+    if (widget.sessionId != null) {
+      _loadRoutineExercises();
+    }
+  }
+
+  // Load pre-configured exercises from the template session
+  Future<void> _loadRoutineExercises() async {
+    final exercisesData = await DatabaseHelper.instance.getSessionExercises(widget.sessionId!);
+    setState(() {
+      for (var exData in exercisesData) {
+        int tSets = int.tryParse(exData['target_sets']?.toString() ?? '3') ?? 3;
+        int tReps = int.tryParse(exData['target_reps']?.toString() ?? '10') ?? 10;
+
+        // Pass the targets into the ActiveExercise so it builds the correct number of rows
+        _workoutExercises.add(ActiveExercise(exData, targetSets: tSets, targetReps: tReps));
+      }
+    });
+  }
 
   // Launch library and wait for user to select an exercise
   Future<void> _addExercise() async {
@@ -131,7 +165,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
           children: [
             // Header: Exercise Name
             Text(
-              activeExercise.exerciseData['name'],
+              activeExercise.exerciseData['name'] ?? 'Exercise',
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueAccent),
             ),
             const SizedBox(height: 12),

@@ -260,17 +260,18 @@ class DatabaseHelper {
   Future<List<Map<String, dynamic>>> getProgramDayExercises(int programDayId) async {
     Database db = await database;
 
-    // Join the junction table with your main Exercises table to get the names
     String sql = '''
       SELECT 
         e.id as exercise_id,
         e.name,
         e.implement,
-        pde.id as program_day_exercise_id
+        pde.id as program_day_exercise_id,
+        pde.target_sets,
+        pde.target_reps
       FROM Program_Day_Exercises pde
       JOIN Exercises e ON pde.exercise_id = e.id
       WHERE pde.program_day_id = ?
-      ORDER BY pde.id ASC
+      ORDER BY pde.order_number ASC
     ''';
 
     return await db.rawQuery(sql, [programDayId]);
@@ -313,25 +314,90 @@ class DatabaseHelper {
   }
 
   // Link an exercise to a specific program day with the required order_number
-  Future<void> addExerciseToProgramDay(int programDayId, int exerciseId) async {
+  // Link an exercise to a specific program day with safe integer casting
+  Future<void> addExerciseToProgramDay(dynamic programDayId, dynamic exerciseId, dynamic targetSets, dynamic targetReps) async {
     Database db = await database;
 
-    // 1. Calculate the next order number for this routine day
+    int pDayId = int.parse(programDayId.toString());
+    int exId = int.parse(exerciseId.toString());
+    int tSets = int.parse(targetSets.toString());
+    int tReps = int.parse(targetReps.toString());
+
     List<Map<String, dynamic>> existing = await db.rawQuery(
       'SELECT COUNT(*) as count FROM Program_Day_Exercises WHERE program_day_id = ?',
-      [programDayId],
+      [pDayId],
     );
     int nextOrderNumber = (Sqflite.firstIntValue(existing) ?? 0) + 1;
 
-    // 2. Insert with the order_number included to satisfy the constraint
     await db.insert(
       'Program_Day_Exercises',
       {
-        'program_day_id': programDayId,
-        'exercise_id': exerciseId,
+        'program_day_id': pDayId,
+        'exercise_id': exId,
         'order_number': nextOrderNumber,
+        'target_sets': tSets,
+        'target_reps': tReps,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
+  // Start a workout session from a multi-day program template day
+  // Start a workout session from a multi-day program template day safely
+  Future<int> startWorkoutFromProgramDay(int programDayId) async {
+    Database db = await database;
+
+    // 1. Create a new Session record
+    String startTime = DateTime.now().toIso8601String();
+    int sessionId = await db.insert('Sessions', {
+      'start_time': startTime,
+    });
+
+    // 2. Fetch all exercises assigned to this program day template
+    List<Map<String, dynamic>> programExercises = await db.query(
+      'Program_Day_Exercises',
+      where: 'program_day_id = ?',
+      whereArgs: [programDayId],
+      orderBy: 'order_number ASC',
+    );
+
+    // 3. Copy only the columns that actually exist in Session_Exercises
+    for (var ex in programExercises) {
+      await db.insert('Session_Exercises', {
+        'session_id': sessionId,
+        'exercise_id': ex['exercise_id'],
+        'order_number': ex['order_number'],
+      });
+    }
+
+    return sessionId;
+  }
+  // Fetch exercises linked to a live session (when starting from a template)
+  // Fetch session exercises along with their routine targets
+  Future<List<Map<String, dynamic>>> getSessionExercises(int sessionId) async {
+    Database db = await database;
+
+    // First, let's find out which program day this session originated from,
+    // or just fetch the exercise library details and match order.
+    return await db.rawQuery('''
+      SELECT 
+        se.id as session_exercise_id,
+        e.id as id,
+        e.name,
+        e.implement
+      FROM Session_Exercises se
+      JOIN Exercises e ON se.exercise_id = e.id
+      WHERE se.session_id = ?
+      ORDER BY se.order_number ASC
+    ''', [sessionId]);
+  }
+  // Delete a master program (cascades to days and exercises automatically)
+  Future<void> deleteProgram(int programId) async {
+    Database db = await database;
+    await db.delete(
+      'Programs',
+      where: 'id = ?',
+      whereArgs: [programId],
+    );
+  }
+
 }

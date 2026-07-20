@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'database_helper.dart';
 import 'exercise_library.dart';
+import 'database_helper.dart';
+import 'active_workout.dart';
 
 class ProgramDetailsScreen extends StatefulWidget {
   final Map<String, dynamic> program;
@@ -23,14 +24,14 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
   }
 
   Future<void> _loadProgramData() async {
-    // 1. Fetch the days for this specific program
-    final days = await DatabaseHelper.instance.getProgramDays(widget.program['id']);
+    int programId = int.parse(widget.program['id'].toString());
+    final days = await DatabaseHelper.instance.getProgramDays(programId);
 
-    // 2. Fetch the exercises for each day
     final Map<int, List<Map<String, dynamic>>> tempDayExercises = {};
     for (var day in days) {
-      final exercises = await DatabaseHelper.instance.getProgramDayExercises(day['id']);
-      tempDayExercises[day['id']] = exercises;
+      int dayId = int.parse(day['id'].toString());
+      final exercises = await DatabaseHelper.instance.getProgramDayExercises(dayId);
+      tempDayExercises[dayId] = exercises;
     }
 
     setState(() {
@@ -41,8 +42,6 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
     });
   }
 
-  // --- NEW: The Dialog to Add a Day ---
-  // --- UPDATED: Using TextEditingController for bulletproof input ---
   Future<void> _showAddDayDialog() async {
     final TextEditingController nameController = TextEditingController();
 
@@ -73,19 +72,12 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
                 String dayName = nameController.text.trim();
                 if (dayName.isNotEmpty) {
                   try {
-                    // Safely parse the program ID to an integer
                     int programId = int.parse(widget.program['id'].toString());
-
-                    // 1. Save to SQLite
                     await DatabaseHelper.instance.createProgramDay(programId, dayName);
 
-                    // 2. Close Dialog
                     if (context.mounted) Navigator.pop(context);
-
-                    // 3. Refresh UI
                     _loadProgramData();
                   } catch (e) {
-                    // Show the exact error on screen so we can see it!
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
@@ -102,6 +94,88 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
     );
   }
 
+  Future<void> _showTargetInputAndAddExercise(int programDayId) async {
+    final selectedExercise = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const ExerciseLibraryScreen()),
+    );
+
+    if (selectedExercise == null || !mounted) return;
+
+    final TextEditingController setsController = TextEditingController(text: '3');
+    final TextEditingController repsController = TextEditingController(text: '10');
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.grey[900],
+          title: Text('Targets for ${selectedExercise['name']}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: setsController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Target Sets',
+                  filled: true,
+                  fillColor: Colors.grey[800],
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: repsController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Target Reps',
+                  filled: true,
+                  fillColor: Colors.grey[800],
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
+              onPressed: () async {
+                try {
+                  int targetSets = int.tryParse(setsController.text.trim()) ?? 3;
+                  int targetReps = int.tryParse(repsController.text.trim()) ?? 10;
+                  int exerciseId = int.parse(selectedExercise['id'].toString());
+                  int dayId = int.parse(programDayId.toString());
+
+                  await DatabaseHelper.instance.addExerciseToProgramDay(
+                    dayId,
+                    exerciseId,
+                    targetSets,
+                    targetReps,
+                  );
+
+                  if (context.mounted) Navigator.pop(context);
+                  _loadProgramData();
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error adding exercise: $e'), backgroundColor: Colors.red),
+                    );
+                  }
+                }
+              },
+              child: const Text('Add', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -109,7 +183,6 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
         title: Text(widget.program['name'] ?? 'Program Details'),
         elevation: 0,
         actions: [
-          // --- UPDATED TO CALL DIALOG ---
           IconButton(
             icon: const Icon(Icons.add, color: Colors.teal),
             tooltip: 'Add Day',
@@ -126,7 +199,8 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
         itemCount: _days.length,
         itemBuilder: (context, index) {
           final day = _days[index];
-          final exercises = _dayExercises[day['id']] ?? [];
+          int dayId = int.parse(day['id'].toString());
+          final exercises = _dayExercises[dayId] ?? [];
 
           return Card(
             color: Colors.grey[900],
@@ -137,19 +211,33 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Day Header
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        day['day_name'] ?? 'Day ${index + 1}',
+                        day['day_name'] ?? day['name'] ?? 'Day ${index + 1}',
                         style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueAccent),
                       ),
                       ElevatedButton.icon(
-                        onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Starting ${day['name']}...')),
-                          );
+                        onPressed: () async {
+                          try {
+                            int sessionId = await DatabaseHelper.instance.startWorkoutFromProgramDay(dayId);
+
+                            if (context.mounted) {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => ActiveWorkoutScreen(sessionId: sessionId),
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Error starting workout: $e'), backgroundColor: Colors.red),
+                              );
+                            }
+                          }
                         },
                         icon: const Icon(Icons.play_arrow, size: 16),
                         label: const Text('START'),
@@ -163,7 +251,6 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
                   ),
                   const Divider(color: Colors.grey),
 
-                  // Exercise List for this Day
                   exercises.isEmpty
                       ? const Padding(
                     padding: EdgeInsets.symmetric(vertical: 8.0),
@@ -171,44 +258,23 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
                   )
                       : Column(
                     children: exercises.map((ex) {
+                      int targetSets = int.tryParse(ex['target_sets']?.toString() ?? '3') ?? 3;
+                      int targetReps = int.tryParse(ex['target_reps']?.toString() ?? '10') ?? 10;
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
                         visualDensity: VisualDensity.compact,
-                        title: Text(ex['name'], style: const TextStyle(color: Colors.white)),
-                        subtitle: Text(ex['implement'] ?? '', style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+                        title: Text(ex['name'] ?? '', style: const TextStyle(color: Colors.white)),
+                        subtitle: Text(
+                          'Target: $targetSets sets × $targetReps reps',
+                          style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                        ),
                         trailing: const Icon(Icons.drag_handle, color: Colors.grey),
                       );
                     }).toList(),
                   ),
 
-                  // Add Exercise to Day Button
                   TextButton.icon(
-                    onPressed: () async {
-                      // 1. Open Exercise Library and wait for selection
-                      final selectedExercise = await Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const ExerciseLibraryScreen()),
-                      );
-
-                      // 2. If an exercise was selected, save it to this day
-                      if (selectedExercise != null) {
-                        try {
-                          int programDayId = int.parse(day['id'].toString());
-                          int exerciseId = int.parse(selectedExercise['id'].toString());
-
-                          await DatabaseHelper.instance.addExerciseToProgramDay(programDayId, exerciseId);
-
-                          // 3. Refresh the UI to display the new exercise
-                          _loadProgramData();
-                        } catch (e) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Error adding exercise: $e'), backgroundColor: Colors.red),
-                            );
-                          }
-                        }
-                      }
-                    },
+                    onPressed: () => _showTargetInputAndAddExercise(dayId),
                     icon: const Icon(Icons.add_circle_outline, color: Colors.grey, size: 18),
                     label: const Text('Add Exercise', style: TextStyle(color: Colors.grey)),
                   )

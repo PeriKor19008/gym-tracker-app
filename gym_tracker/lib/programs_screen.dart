@@ -27,7 +27,6 @@ class _ProgramsScreenState extends State<ProgramsScreen> {
     });
   }
 
-  // --- NEW: The Dialog to Create a Program ---
   Future<void> _showCreateProgramDialog() async {
     String newName = '';
     String newDescription = '';
@@ -72,15 +71,44 @@ class _ProgramsScreenState extends State<ProgramsScreen> {
               style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
               onPressed: () async {
                 if (newName.trim().isNotEmpty) {
-                  // 1. Save to SQLite
                   await DatabaseHelper.instance.createProgram(newName.trim(), newDescription.trim());
-                  // 2. Close Dialog
-                  Navigator.pop(context);
-                  // 3. Refresh the UI list
+                  if (context.mounted) Navigator.pop(context);
                   _loadPrograms();
                 }
               },
               child: const Text('Save', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // --- NEW: Confirmation Dialog before Deleting ---
+  Future<void> _showDeleteConfirmation(int programId, String programName) async {
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.grey[900],
+          title: Text('Delete "$programName"?'),
+          content: const Text(
+            'This will permanently delete this program and all its routine days and exercises.',
+            style: TextStyle(color: Colors.grey),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+              onPressed: () async {
+                await DatabaseHelper.instance.deleteProgram(programId);
+                if (context.mounted) Navigator.pop(context);
+                _loadPrograms();
+              },
+              child: const Text('Delete', style: TextStyle(color: Colors.white)),
             ),
           ],
         );
@@ -123,7 +151,21 @@ class _ProgramsScreenState extends State<ProgramsScreen> {
                   style: TextStyle(color: Colors.grey[400]),
                 ),
               ),
-              trailing: const Icon(Icons.arrow_forward_ios, color: Colors.teal, size: 18),
+              // --- NEW: Delete icon combined with the arrow ---
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                    tooltip: 'Delete Program',
+                    onPressed: () => _showDeleteConfirmation(
+                      int.parse(program['id'].toString()),
+                      program['name'] ?? 'Program',
+                    ),
+                  ),
+                  const Icon(Icons.arrow_forward_ios, color: Colors.teal, size: 18),
+                ],
+              ),
               onTap: () {
                 Navigator.push(
                   context,
@@ -137,7 +179,7 @@ class _ProgramsScreenState extends State<ProgramsScreen> {
         },
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showCreateProgramDialog, // --- UPDATED TO CALL DIALOG ---
+        onPressed: _showCreateProgramDialog,
         icon: const Icon(Icons.add),
         label: const Text('New Program'),
         backgroundColor: Colors.blueAccent,
