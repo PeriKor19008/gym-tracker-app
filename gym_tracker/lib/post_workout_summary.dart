@@ -3,6 +3,25 @@ import 'package:fl_chart/fl_chart.dart';
 import 'active_workout.dart';
 import 'database_helper.dart';
 
+// Helper class to hold exercise summary data including multiple PR statuses
+class ExerciseSummaryResult {
+  final ActiveExercise exercise;
+  final Map<String, dynamic> fatigueAnalysis;
+  final bool isWeightPR;
+  final bool is1RMPR;
+  final double maxWeightLifted;
+  final double max1RMLifted;
+
+  ExerciseSummaryResult({
+    required this.exercise,
+    required this.fatigueAnalysis,
+    required this.isWeightPR,
+    required this.is1RMPR,
+    required this.maxWeightLifted,
+    required this.max1RMLifted,
+  });
+}
+
 class PostWorkoutSummaryScreen extends StatefulWidget {
   final List<ActiveExercise> workoutExercises;
   final DateTime sessionStartTime;
@@ -26,6 +45,7 @@ class _PostWorkoutSummaryScreenState extends State<PostWorkoutSummaryScreen> {
   int _totalReps = 0;
 
   Map<String, double> _muscleScores = {};
+  List<ExerciseSummaryResult> _analyzedExercises = [];
 
   @override
   void initState() {
@@ -33,11 +53,21 @@ class _PostWorkoutSummaryScreenState extends State<PostWorkoutSummaryScreen> {
     _calculateWorkoutData();
   }
 
+  // --- Formula for Estimated 1RM (Epley Formula) ---
+  double _calculateEstimated1RM(double weight, int reps) {
+    if (reps <= 0) return 0;
+    if (reps == 1) return weight;
+    return weight * (1 + (reps / 30.0));
+  }
+
   Future<void> _calculateWorkoutData() async {
     double tempTonnage = 0;
     int tempSets = 0;
     int tempReps = 0;
     Map<String, double> tempScores = {};
+    List<ExerciseSummaryResult> tempAnalyzed = [];
+
+    String startTimeStr = widget.sessionStartTime.toIso8601String();
 
     for (var ex in widget.workoutExercises) {
       List<WorkoutSet> completedSets = ex.sets.where((s) => s.isCompleted).toList();
@@ -46,25 +76,59 @@ class _PostWorkoutSummaryScreenState extends State<PostWorkoutSummaryScreen> {
       int setsDone = completedSets.length;
       tempSets += setsDone;
 
+      double exerciseMaxWeight = 0;
+      double exerciseMax1RM = 0;
+
       for (var s in completedSets) {
         double w = double.tryParse(s.weightController.text) ?? 0.0;
         int r = int.tryParse(s.repsController.text) ?? 0;
         tempReps += r;
         tempTonnage += (w * r);
+
+        if (w > exerciseMaxWeight) exerciseMaxWeight = w;
+
+        double set1RM = _calculateEstimated1RM(w, r);
+        if (set1RM > exerciseMax1RM) exerciseMax1RM = set1RM;
       }
 
+      // --- DUAL PR ENGINE CHECK ---
       int exId = ex.exerciseData['id'] ?? ex.exerciseData['exercise_id'];
-      List<Map<String, dynamic>> dbMuscles = await DatabaseHelper.instance.getExerciseMuscles(exId);
 
+      // 1. Max Weight Check
+      double previousMaxWeight = await DatabaseHelper.instance.getPreviousMaxWeight(exId, startTimeStr);
+      bool isWeightPR = previousMaxWeight > 0 && exerciseMaxWeight > previousMaxWeight;
+
+      // 2. Estimated 1RM Check
+      List<Map<String, dynamic>> pastSets = await DatabaseHelper.instance.getPreviousSets(exId, startTimeStr);
+      double previousMax1RM = 0;
+      for (var row in pastSets) {
+        double pw = double.tryParse(row['weight'].toString()) ?? 0.0;
+        int pr = int.tryParse(row['reps'].toString()) ?? 0;
+        double past1RM = _calculateEstimated1RM(pw, pr);
+        if (past1RM > previousMax1RM) previousMax1RM = past1RM;
+      }
+      bool is1RMPR = previousMax1RM > 0 && exerciseMax1RM > previousMax1RM;
+
+      // Muscle distribution score calculation
+      List<Map<String, dynamic>> dbMuscles = await DatabaseHelper.instance.getExerciseMuscles(exId);
       for (var m in dbMuscles) {
         String muscleName = m['name'];
         bool isPrimary = m['is_primary'] == 1;
-
         double multiplier = isPrimary ? 1.0 : 0.5;
         double impactScore = setsDone * multiplier;
-
         tempScores[muscleName] = (tempScores[muscleName] ?? 0) + impactScore;
       }
+
+      var fatigue = _calculateFatigue(ex);
+
+      tempAnalyzed.add(ExerciseSummaryResult(
+        exercise: ex,
+        fatigueAnalysis: fatigue,
+        isWeightPR: isWeightPR,
+        is1RMPR: is1RMPR,
+        maxWeightLifted: exerciseMaxWeight,
+        max1RMLifted: exerciseMax1RM,
+      ));
     }
 
     setState(() {
@@ -72,6 +136,7 @@ class _PostWorkoutSummaryScreenState extends State<PostWorkoutSummaryScreen> {
       _totalSets = tempSets;
       _totalReps = tempReps;
       _muscleScores = tempScores;
+      _analyzedExercises = tempAnalyzed;
       _isLoading = false;
     });
   }
@@ -118,15 +183,12 @@ class _PostWorkoutSummaryScreenState extends State<PostWorkoutSummaryScreen> {
     }
   }
 
-  // --- NEW: Helper to format duration ---
   String _formatDuration(DateTime start, DateTime end) {
     final duration = end.difference(start);
     final hours = duration.inHours;
     final minutes = duration.inMinutes.remainder(60);
 
-    if (hours > 0) {
-      return '${hours}h ${minutes}m';
-    }
+    if (hours > 0) return '${hours}h ${minutes}m';
     return '${minutes}m';
   }
 
@@ -184,8 +246,6 @@ class _PostWorkoutSummaryScreenState extends State<PostWorkoutSummaryScreen> {
       return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator()));
     }
 
-    final completedExercises = widget.workoutExercises.where((ex) => ex.sets.any((s) => s.isCompleted)).toList();
-
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -205,7 +265,6 @@ class _PostWorkoutSummaryScreenState extends State<PostWorkoutSummaryScreen> {
             const Text('Session Complete!', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
             const SizedBox(height: 16),
 
-            // --- UPDATED: 3 Stat Cards Row ---
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: Row(
@@ -252,46 +311,99 @@ class _PostWorkoutSummaryScreenState extends State<PostWorkoutSummaryScreen> {
               child: Divider(color: Colors.grey, height: 1),
             ),
 
-            const Text('Fatigue Analysis', style: TextStyle(color: Colors.grey, fontSize: 16, fontWeight: FontWeight.bold)),
+            const Text('Fatigue & PR Analysis', style: TextStyle(color: Colors.grey, fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
 
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: Column(
-                children: completedExercises.map((ex) {
-                  final fatigueAnalysis = _calculateFatigue(ex);
+                children: _analyzedExercises.map((result) {
+                  final ex = result.exercise;
+                  final fatigue = result.fatigueAnalysis;
+                  bool hasAnyPR = result.isWeightPR || result.is1RMPR;
+
                   return Card(
                     color: Colors.grey[900],
                     margin: const EdgeInsets.only(bottom: 12),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(color: fatigueAnalysis['color'].withOpacity(0.3))
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(
+                        color: hasAnyPR ? Colors.amber : fatigue['color'].withOpacity(0.3),
+                        width: hasAnyPR ? 2 : 1,
+                      ),
                     ),
-                    // --- NEW: ExpansionTile for dropdown details ---
                     child: Theme(
                       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
                       child: ExpansionTile(
                         tilePadding: const EdgeInsets.all(16),
                         iconColor: Colors.grey,
                         collapsedIconColor: Colors.grey,
-                        title: Text(ex.exerciseData['name'], style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16)),
+                        title: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                ex.exerciseData['name'],
+                                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16),
+                              ),
+                            ),
+                            // --- CELEBRATORY PR BADGES ---
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (result.isWeightPR)
+                                  Container(
+                                    margin: const EdgeInsets.only(left: 4),
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.amber.withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(color: Colors.amber),
+                                    ),
+                                    child: const Row(
+                                      children: [
+                                        Icon(Icons.emoji_events, color: Colors.amber, size: 12),
+                                        SizedBox(width: 3),
+                                        Text('WEIGHT PR', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 10)),
+                                      ],
+                                    ),
+                                  ),
+                                if (result.is1RMPR)
+                                  Container(
+                                    margin: const EdgeInsets.only(left: 4),
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.amber.withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(color: Colors.amber),
+                                    ),
+                                    child: const Row(
+                                      children: [
+                                        Icon(Icons.trending_up, color: Colors.amber, size: 12),
+                                        SizedBox(width: 3),
+                                        Text('1RM PR', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 10)),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
                         subtitle: Padding(
                           padding: const EdgeInsets.only(top: 8.0),
-                          child: Text(fatigueAnalysis['message'], style: TextStyle(color: Colors.grey[400], fontSize: 13)),
+                          child: Text(fatigue['message'], style: TextStyle(color: Colors.grey[400], fontSize: 13)),
                         ),
                         trailing: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: fatigueAnalysis['color'].withOpacity(0.2),
+                            color: fatigue['color'].withOpacity(0.2),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            fatigueAnalysis['status'],
-                            style: TextStyle(color: fatigueAnalysis['color'], fontWeight: FontWeight.bold, fontSize: 12),
+                            fatigue['status'],
+                            style: TextStyle(color: fatigue['color'], fontWeight: FontWeight.bold, fontSize: 12),
                           ),
                         ),
                         children: [
-                          // The dropdown details
                           Container(
                             padding: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
                             child: Column(

@@ -5,6 +5,7 @@ import 'active_workout.dart';
 import 'history_screen.dart';
 import 'programs_screen.dart';
 import 'test_data_generator.dart';
+import 'muscle_recovery_screen.dart';
 
 void main() async {
   // Required before calling native plugins (like sqflite) in main()

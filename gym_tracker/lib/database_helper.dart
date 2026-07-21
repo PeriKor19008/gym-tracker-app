@@ -442,5 +442,46 @@ class DatabaseHelper {
       WHERE em.exercise_id = ?
     ''', [exerciseId]);
   }
+  // --- Check previous all-time maximum weight for an exercise ---
+  Future<double> getPreviousMaxWeight(int exerciseId, String currentSessionStartTime) async {
+    Database db = await database;
+    final result = await db.rawQuery('''
+      SELECT MAX(st.weight) as max_weight
+      FROM Sets st
+      JOIN Session_Exercises se ON st.session_exercise_id = se.id
+      JOIN Sessions s ON se.session_id = s.id
+      WHERE se.exercise_id = ? AND s.start_time < ?
+    ''', [exerciseId, currentSessionStartTime]);
+
+    if (result.isNotEmpty && result.first['max_weight'] != null) {
+      return double.tryParse(result.first['max_weight'].toString()) ?? 0.0;
+    }
+    return 0.0; // Returns 0 if there's no prior history (first time doing the exercise)
+  }
+  // --- Fetch historical sets to calculate previous max Estimated 1RM ---
+  Future<List<Map<String, dynamic>>> getPreviousSets(int exerciseId, String currentSessionStartTime) async {
+    Database db = await database;
+    return await db.rawQuery('''
+      SELECT st.weight, st.reps
+      FROM Sets st
+      JOIN Session_Exercises se ON st.session_exercise_id = se.id
+      JOIN Sessions s ON se.session_id = s.id
+      WHERE se.exercise_id = ? AND s.start_time < ?
+    ''', [exerciseId, currentSessionStartTime]);
+  }
+  // --- Fetch latest training timestamp for each muscle group ---
+  Future<List<Map<String, dynamic>>> getMuscleRecoveryData() async {
+    Database db = await database;
+    return await db.rawQuery('''
+      SELECT mg.name as muscle_name, 
+             MAX(s.start_time) as last_trained
+      FROM Muscle_Groups mg
+      LEFT JOIN Exercise_Muscles em ON em.muscle_id = mg.id
+      LEFT JOIN Session_Exercises se ON se.exercise_id = em.exercise_id
+      LEFT JOIN Sessions s ON s.id = se.session_id
+      GROUP BY mg.id
+    ''');
+  }
+
 
 }
