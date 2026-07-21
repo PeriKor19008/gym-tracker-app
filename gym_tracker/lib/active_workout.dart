@@ -4,6 +4,7 @@ import 'dart:async'; // --- NEW: Required for the Timer ---
 import 'exercise_library.dart';
 import 'database_helper.dart';
 import 'post_workout_summary.dart';
+import 'exercise_details_screen.dart';
 
 // Data model for a single set
 class WorkoutSet {
@@ -270,6 +271,8 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   }
 
   Widget _buildExerciseCard(ActiveExercise activeExercise) {
+    final exerciseMap = activeExercise.exerciseData;
+    int exId = exerciseMap['id'] ?? exerciseMap['exercise_id'];
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       color: Colors.grey[900],
@@ -279,9 +282,30 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              activeExercise.exerciseData['name'] ?? 'Exercise',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueAccent),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    exerciseMap['name'] ?? 'Exercise',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueAccent),
+                  ),
+                ),
+                // --- HISTORY BUTTON ---
+                IconButton(
+                  icon: const Icon(Icons.history, color: Colors.tealAccent),
+                  tooltip: 'View Exercise Analytics',
+                  onPressed: () {
+                    // Opens your existing ExerciseDetailsScreen with charts and logs
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ExerciseDetailsScreen(exercise: exerciseMap),
+                      ),
+                    );
+                  },
+                ),
+              ],
             ),
             // --- NEW: Coach Suggestion Banner ---
             if (activeExercise.isDeload)
