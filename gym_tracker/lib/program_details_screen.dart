@@ -24,14 +24,26 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
   }
 
   Future<void> _loadProgramData() async {
-    int programId = int.parse(widget.program['id'].toString());
-    final days = await DatabaseHelper.instance.getProgramDays(programId);
+    final days = await DatabaseHelper.instance.getProgramDays(widget.program['id']);
 
     final Map<int, List<Map<String, dynamic>>> tempDayExercises = {};
     for (var day in days) {
-      int dayId = int.parse(day['id'].toString());
-      final exercises = await DatabaseHelper.instance.getProgramDayExercises(dayId);
-      tempDayExercises[dayId] = exercises;
+      final exercises = await DatabaseHelper.instance.getProgramDayExercises(day['id']);
+
+      // --- NEW: Check for deloads when loading the program ---
+      List<Map<String, dynamic>> exercisesWithDeloads = [];
+      for (var ex in exercises) {
+        var mutableEx = Map<String, dynamic>.from(ex);
+        int exerciseId = mutableEx['exercise_id'];
+        var deloadData = await DatabaseHelper.instance.getDeloadRecommendation(exerciseId);
+
+        if (deloadData != null) {
+          mutableEx['is_deload'] = true;
+        }
+        exercisesWithDeloads.add(mutableEx);
+      }
+
+      tempDayExercises[day['id']] = exercisesWithDeloads;
     }
 
     setState(() {
@@ -263,7 +275,23 @@ class _ProgramDetailsScreenState extends State<ProgramDetailsScreen> {
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
                         visualDensity: VisualDensity.compact,
-                        title: Text(ex['name'] ?? '', style: const TextStyle(color: Colors.white)),
+                        title: Row(
+                          children: [
+                            Text(ex['name'], style: const TextStyle(color: Colors.white)),
+                            const SizedBox(width: 8),
+                            // --- NEW: Deload Badge ---
+                            if (ex['is_deload'] == true)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.blueAccent.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: Colors.blueAccent),
+                                ),
+                                child: const Text('Deload', style: TextStyle(color: Colors.blueAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                              )
+                          ],
+                        ),
                         subtitle: Text(
                           'Target: $targetSets sets × $targetReps reps',
                           style: TextStyle(color: Colors.grey[400], fontSize: 12),

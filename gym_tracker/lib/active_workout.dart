@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'dart:async'; // --- NEW: Required for the Timer ---
 import 'exercise_library.dart';
 import 'database_helper.dart';
+import 'post_workout_summary.dart';
 
 // Data model for a single set
 class WorkoutSet {
@@ -15,6 +16,10 @@ class WorkoutSet {
 class ActiveExercise {
   final Map<String, dynamic> exerciseData;
   List<WorkoutSet> sets = [WorkoutSet()];
+
+  // --- NEW: Track deload state ---
+  bool isDeload = false;
+  double? suggestedWeight;
 
   ActiveExercise(this.exerciseData);
 }
@@ -29,6 +34,7 @@ class ActiveWorkoutScreen extends StatefulWidget {
 
 class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   final List<ActiveExercise> _workoutExercises = [];
+  final DateTime _workoutStartTime = DateTime.now();
 
   // --- NEW: Timer State Variables ---
   Timer? _restTimer;
@@ -93,11 +99,25 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
 
   Future<void> _loadRoutineExercises() async {
     final exercisesData = await DatabaseHelper.instance.getSessionExercises(widget.sessionId!);
-    setState(() {
-      for (var exData in exercisesData) {
-        _workoutExercises.add(ActiveExercise(exData));
+
+    for (var exData in exercisesData) {
+      ActiveExercise activeEx = ActiveExercise(exData);
+      int exId = activeEx.exerciseData['id'] ?? activeEx.exerciseData['exercise_id'];
+
+      // --- NEW: Check for deload and auto-fill weight ---
+      var deloadData = await DatabaseHelper.instance.getDeloadRecommendation(exId);
+      if (deloadData != null) {
+        activeEx.isDeload = true;
+        activeEx.suggestedWeight = deloadData['suggested_weight'];
+
+        // Auto-fill the first set with the reduced weight
+        activeEx.sets[0].weightController.text = activeEx.suggestedWeight.toString();
       }
-    });
+
+      setState(() {
+        _workoutExercises.add(activeEx);
+      });
+    }
   }
 
   Future<void> _addExercise() async {
@@ -107,8 +127,21 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
     );
 
     if (selectedExercise != null) {
+      ActiveExercise newEx = ActiveExercise(selectedExercise);
+      int exId = int.parse(selectedExercise['id'].toString());
+
+      // --- NEW: Check for deload when manually adding an exercise ---
+      var deloadData = await DatabaseHelper.instance.getDeloadRecommendation(exId);
+      if (deloadData != null) {
+        newEx.isDeload = true;
+        newEx.suggestedWeight = deloadData['suggested_weight'];
+
+        // Auto-fill the first set with the reduced weight
+        newEx.sets[0].weightController.text = newEx.suggestedWeight.toString();
+      }
+
       setState(() {
-        _workoutExercises.add(ActiveExercise(selectedExercise));
+        _workoutExercises.add(newEx);
       });
     }
   }
@@ -143,7 +176,21 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
 
     try {
       await DatabaseHelper.instance.saveWorkoutSession(exercisesToSave);
-      if (mounted) Navigator.pop(context);
+
+
+      // --- Go to Summary Screen ---
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PostWorkoutSummaryScreen(
+              workoutExercises: _workoutExercises,
+              sessionStartTime: _workoutStartTime, // Passed down
+              sessionEndTime: DateTime.now(),      // Captured instantly
+            ),
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -236,6 +283,29 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
               activeExercise.exerciseData['name'] ?? 'Exercise',
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueAccent),
             ),
+            // --- NEW: Coach Suggestion Banner ---
+            if (activeExercise.isDeload)
+              Container(
+                margin: const EdgeInsets.only(top: 8),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blueAccent.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blueAccent.withOpacity(0.5)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline, color: Colors.blueAccent, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Plateau detected. Suggesting a 20% deload to ${activeExercise.suggestedWeight} for CNS recovery.',
+                        style: const TextStyle(color: Colors.blueAccent, fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             const SizedBox(height: 12),
             const Row(
               children: [

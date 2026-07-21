@@ -4,6 +4,7 @@ import 'exercise_library.dart';
 import 'active_workout.dart';
 import 'history_screen.dart';
 import 'programs_screen.dart';
+import 'test_data_generator.dart';
 
 void main() async {
   // Required before calling native plugins (like sqflite) in main()
@@ -55,6 +56,84 @@ class DashboardScreen extends StatelessWidget {
         title: const Text('Gym Tracker', style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
         elevation: 0,
+        actions: [
+          // --- MASTER TEST SUITE BUTTON ---
+          // --- MASTER TEST SUITE BUTTON ---
+          // --- MASTER TEST SUITE BUTTON ---
+          IconButton(
+            icon: const Icon(Icons.bug_report, color: Colors.orange),
+            tooltip: 'Run Test Suite',
+            onPressed: () async {
+              try {
+                // 1. Try to run the tests
+                List<String> testLogs = await TestDataGenerator.runAllTests();
+
+                // 2. If successful, display the success logs
+                if (context.mounted) {
+                  showDialog(
+                      context: context,
+                      builder: (context) {
+                        return AlertDialog(
+                          backgroundColor: Colors.grey[900],
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          title: const Row(
+                            children: [
+                              Icon(Icons.check_circle, color: Colors.green),
+                              SizedBox(width: 8),
+                              Text('Test Suite Executed', style: TextStyle(color: Colors.white, fontSize: 18)),
+                            ],
+                          ),
+                          content: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: testLogs.map((log) => Padding(
+                              padding: const EdgeInsets.only(bottom: 8.0),
+                              child: Text(log, style: const TextStyle(color: Colors.grey)),
+                            )).toList(),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('OK', style: TextStyle(color: Colors.teal, fontWeight: FontWeight.bold)),
+                            )
+                          ],
+                        );
+                      }
+                  );
+                }
+              } catch (e) {
+                // 3. IF IT CRASHES, CATCH IT AND SHOW THE ERROR ON SCREEN
+                if (context.mounted) {
+                  showDialog(
+                      context: context,
+                      builder: (context) {
+                        return AlertDialog(
+                          backgroundColor: Colors.grey[900],
+                          title: const Row(
+                            children: [
+                              Icon(Icons.error_outline, color: Colors.redAccent),
+                              SizedBox(width: 8),
+                              Text('Database Error', style: TextStyle(color: Colors.white)),
+                            ],
+                          ),
+                          content: Text(
+                            e.toString(),
+                            style: const TextStyle(color: Colors.redAccent),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('CLOSE', style: TextStyle(color: Colors.grey)),
+                            )
+                          ],
+                        );
+                      }
+                  );
+                }
+              }
+            },
+          )
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),

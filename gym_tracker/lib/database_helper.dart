@@ -400,4 +400,47 @@ class DatabaseHelper {
     );
   }
 
+  // --- NEW: Plateau Detection Engine ---
+  Future<Map<String, dynamic>?> getDeloadRecommendation(int exerciseId) async {
+    Database db = await database;
+
+    // Fetch the max weight lifted for this exercise in the last 3 sessions
+    List<Map<String, dynamic>> stats = await db.rawQuery('''
+      SELECT se.session_id, MAX(s.weight) as max_weight
+      FROM Session_Exercises se
+      JOIN Sets s ON s.session_exercise_id = se.id
+      WHERE se.exercise_id = ?
+      GROUP BY se.session_id
+      ORDER BY se.session_id DESC
+      LIMIT 3
+    ''', [exerciseId]);
+
+    // We need at least 3 historical sessions to determine a true plateau
+    if (stats.length < 3) return null;
+
+    double w1 = (stats[0]['max_weight'] as num?)?.toDouble() ?? 0.0; // Most recent session
+    double w2 = (stats[1]['max_weight'] as num?)?.toDouble() ?? 0.0; // Previous session
+    double w3 = (stats[2]['max_weight'] as num?)?.toDouble() ?? 0.0; // Oldest session
+
+    // If max weight plateaued or decreased over 3 consecutive sessions (w1 <= w2 <= w3)
+    if (w1 > 0 && w1 <= w2 && w2 <= w3) {
+      return {
+        'is_deload': true,
+        'suggested_weight': (w1 * 0.8).roundToDouble(), // Calculate a 20% drop for CNS recovery
+      };
+    }
+
+    return null; // No deload needed, you are progressing!
+  }
+  // --- Fetch muscles for the chart calculation ---
+  Future<List<Map<String, dynamic>>> getExerciseMuscles(int exerciseId) async {
+    Database db = await database;
+    return await db.rawQuery('''
+      SELECT mg.name, em.is_primary
+      FROM Exercise_Muscles em
+      JOIN Muscle_Groups mg ON mg.id = em.muscle_id
+      WHERE em.exercise_id = ?
+    ''', [exerciseId]);
+  }
+
 }
