@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:async'; // --- NEW: Required for the Timer ---
 import 'exercise_library.dart';
 import 'database_helper.dart';
 
-// Data model for a single set
 // Data model for a single set
 class WorkoutSet {
   TextEditingController weightController = TextEditingController();
@@ -14,22 +14,13 @@ class WorkoutSet {
 // Data model for an exercise added to the workout
 class ActiveExercise {
   final Map<String, dynamic> exerciseData;
-  List<WorkoutSet> sets = []; // Will be populated dynamically based on targets
+  List<WorkoutSet> sets = [WorkoutSet()];
 
-  ActiveExercise(this.exerciseData, {int targetSets = 3, int targetReps = 10}) {
-    // Automatically generate rows matching the target set count, pre-filling reps!
-    int setsCount = targetSets > 0 ? targetSets : 3;
-    String defaultReps = targetReps > 0 ? targetReps.toString() : '';
-
-    for (int i = 0; i < setsCount; i++) {
-      var workoutSet = WorkoutSet();
-      workoutSet.repsController.text = defaultReps; // Pre-fill target reps
-      sets.add(workoutSet);
-    }
-  }
+  ActiveExercise(this.exerciseData);
 }
+
 class ActiveWorkoutScreen extends StatefulWidget {
-  final int? sessionId; // Optional session ID passed from a routine
+  final int? sessionId;
   const ActiveWorkoutScreen({super.key, this.sessionId});
 
   @override
@@ -39,30 +30,76 @@ class ActiveWorkoutScreen extends StatefulWidget {
 class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   final List<ActiveExercise> _workoutExercises = [];
 
+  // --- NEW: Timer State Variables ---
+  Timer? _restTimer;
+  int _restSeconds = 90; // Default rest time: 1m 30s
+  bool _isTimerRunning = false;
+
   @override
   void initState() {
     super.initState();
-    // If a sessionId was passed from a program, load those exercises automatically!
     if (widget.sessionId != null) {
       _loadRoutineExercises();
     }
   }
 
-  // Load pre-configured exercises from the template session
+  // --- NEW: Clean up the timer when leaving the screen ---
+  @override
+  void dispose() {
+    _restTimer?.cancel();
+    super.dispose();
+  }
+
+  // --- NEW: Timer Logic Methods ---
+  void _startTimer() {
+    if (_restTimer != null) _restTimer!.cancel();
+    setState(() => _isTimerRunning = true);
+
+    _restTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      setState(() {
+        if (_restSeconds > 0) {
+          _restSeconds--;
+        } else {
+          _stopTimer();
+          // Optional: Add haptic feedback or a sound here later!
+        }
+      });
+    });
+  }
+
+  void _stopTimer() {
+    _restTimer?.cancel();
+    setState(() => _isTimerRunning = false);
+  }
+
+  void _resetTimer(int seconds) {
+    _stopTimer();
+    setState(() => _restSeconds = seconds);
+  }
+
+  void _adjustTimer(int seconds) {
+    setState(() {
+      _restSeconds += seconds;
+      if (_restSeconds < 0) _restSeconds = 0;
+    });
+  }
+
+  String _formatTime(int totalSeconds) {
+    int m = totalSeconds ~/ 60;
+    int s = totalSeconds % 60;
+    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+  // --------------------------------
+
   Future<void> _loadRoutineExercises() async {
     final exercisesData = await DatabaseHelper.instance.getSessionExercises(widget.sessionId!);
     setState(() {
       for (var exData in exercisesData) {
-        int tSets = int.tryParse(exData['target_sets']?.toString() ?? '3') ?? 3;
-        int tReps = int.tryParse(exData['target_reps']?.toString() ?? '10') ?? 10;
-
-        // Pass the targets into the ActiveExercise so it builds the correct number of rows
-        _workoutExercises.add(ActiveExercise(exData, targetSets: tSets, targetReps: tReps));
+        _workoutExercises.add(ActiveExercise(exData));
       }
     });
   }
 
-  // Launch library and wait for user to select an exercise
   Future<void> _addExercise() async {
     final selectedExercise = await Navigator.push(
       context,
@@ -93,7 +130,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
 
       if (completedSets.isNotEmpty) {
         exercisesToSave.add({
-          'exercise_id': activeEx.exerciseData['id'],
+          'exercise_id': activeEx.exerciseData['id'] ?? activeEx.exerciseData['exercise_id'],
           'sets': completedSets,
         });
       }
@@ -104,18 +141,13 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
       return;
     }
 
-    // Try to save, but catch any SQLite errors and show them on screen
     try {
       await DatabaseHelper.instance.saveWorkoutSession(exercisesToSave);
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Database Error: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
+          SnackBar(content: Text('Database Error: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -137,12 +169,47 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
       body: _workoutExercises.isEmpty
           ? const Center(child: Text("Tap '+' to add your first exercise", style: TextStyle(color: Colors.grey)))
           : ListView.builder(
-        padding: const EdgeInsets.only(bottom: 80), // Space for floating button
+        padding: const EdgeInsets.only(bottom: 16),
         itemCount: _workoutExercises.length,
         itemBuilder: (context, exerciseIndex) {
           final activeExercise = _workoutExercises[exerciseIndex];
           return _buildExerciseCard(activeExercise);
         },
+      ),
+      // --- NEW: Persistent Rest Timer Banner ---
+      bottomNavigationBar: BottomAppBar(
+        color: Colors.grey[900],
+        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            TextButton(
+              onPressed: () => _adjustTimer(-15),
+              child: const Text('-15s', style: TextStyle(color: Colors.grey)),
+            ),
+            Text(
+              _formatTime(_restSeconds),
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+                // Glows teal when running
+                color: _isTimerRunning ? Colors.tealAccent : Colors.white,
+              ),
+            ),
+            TextButton(
+              onPressed: () => _adjustTimer(15),
+              child: const Text('+15s', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton.icon(
+              onPressed: _isTimerRunning ? _stopTimer : _startTimer,
+              icon: Icon(_isTimerRunning ? Icons.pause : Icons.play_arrow, color: Colors.white),
+              label: Text(_isTimerRunning ? 'PAUSE' : 'START', style: const TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _isTimerRunning ? Colors.orange : Colors.teal,
+              ),
+            ),
+          ],
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _addExercise,
@@ -150,6 +217,8 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
         label: const Text('Add Exercise'),
         backgroundColor: Colors.blueAccent,
       ),
+      // Move FAB up slightly so it doesn't overlap the timer
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 
@@ -163,14 +232,11 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Header: Exercise Name
             Text(
               activeExercise.exerciseData['name'] ?? 'Exercise',
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueAccent),
             ),
             const SizedBox(height: 12),
-
-            // Table Headers
             const Row(
               children: [
                 SizedBox(width: 40, child: Text('Set', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold))),
@@ -181,7 +247,6 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
             ),
             const Divider(color: Colors.grey),
 
-            // Dynamic Rows for Sets
             ...List.generate(activeExercise.sets.length, (setIndex) {
               final workoutSet = activeExercise.sets[setIndex];
               return Padding(
@@ -189,8 +254,6 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                 child: Row(
                   children: [
                     SizedBox(width: 40, child: Text('${setIndex + 1}', style: const TextStyle(fontWeight: FontWeight.bold))),
-
-                    // Weight Input
                     Expanded(
                       child: Container(
                         margin: const EdgeInsets.symmetric(horizontal: 8),
@@ -207,8 +270,6 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                         ),
                       ),
                     ),
-
-                    // Reps Input
                     Expanded(
                       child: Container(
                         margin: const EdgeInsets.symmetric(horizontal: 8),
@@ -225,8 +286,6 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                         ),
                       ),
                     ),
-
-                    // Checkbox
                     SizedBox(
                       width: 48,
                       child: IconButton(
@@ -237,7 +296,10 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                         onPressed: () {
                           setState(() {
                             workoutSet.isCompleted = !workoutSet.isCompleted;
-                          });
+
+
+                            }
+                          );
                         },
                       ),
                     ),
@@ -245,9 +307,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                 ),
               );
             }),
-
             const SizedBox(height: 8),
-            // Add Set Button
             TextButton(
               onPressed: () {
                 setState(() {
