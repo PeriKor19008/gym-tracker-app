@@ -19,7 +19,17 @@ class _MuscleRecoveryScreenState extends State<MuscleRecoveryScreen> {
   }
 
   Future<void> _loadRecoveryData() async {
-    final data = await DatabaseHelper.instance.getMuscleRecoveryData();
+    // 1. Fetch raw data and convert it to a mutable list
+    final rawData = await DatabaseHelper.instance.getMuscleRecoveryData();
+    final List<Map<String, dynamic>> data = List<Map<String, dynamic>>.from(rawData);
+
+    // 2. Safely sort the mutable list (Least recovered / 0% first)
+    data.sort((a, b) {
+      int pctA = _calculateRecovery(a['last_trained'])['percentage'];
+      int pctB = _calculateRecovery(b['last_trained'])['percentage'];
+      return pctA.compareTo(pctB);
+    });
+
     setState(() {
       _recoveryData = data;
       _isLoading = false;
@@ -28,7 +38,7 @@ class _MuscleRecoveryScreenState extends State<MuscleRecoveryScreen> {
 
   // --- RECOVERY MATH ENGINE ---
   Map<String, dynamic> _calculateRecovery(String? lastTrainedStr) {
-    if (lastTrainedStr == null) {
+    if (lastTrainedStr == null || lastTrainedStr.isEmpty || lastTrainedStr == 'null') {
       return {
         'percentage': 100,
         'status': 'Prime Readiness',
@@ -37,44 +47,52 @@ class _MuscleRecoveryScreenState extends State<MuscleRecoveryScreen> {
       };
     }
 
-    DateTime lastTrained = DateTime.parse(lastTrainedStr);
-    Duration difference = DateTime.now().difference(lastTrained);
-    double hoursElapsed = difference.inHours.toDouble();
+    try {
+      DateTime lastTrained = DateTime.parse(lastTrainedStr);
+      Duration difference = DateTime.now().difference(lastTrained);
+      double hoursElapsed = difference.inHours.toDouble();
 
-    // Standard recovery window set to 48 hours for full muscular recuperation
-    const double standardRecoveryHours = 48.0;
+      const double standardRecoveryHours = 48.0;
 
-    double recoveryPercent = (hoursElapsed / standardRecoveryHours) * 100;
-    if (recoveryPercent > 100) recoveryPercent = 100;
+      double recoveryPercent = (hoursElapsed / standardRecoveryHours) * 100;
+      if (recoveryPercent > 100) recoveryPercent = 100;
 
-    Color statusColor;
-    String statusText;
+      Color statusColor;
+      String statusText;
 
-    if (recoveryPercent < 40) {
-      statusColor = Colors.redAccent;
-      statusText = 'Fatigued';
-    } else if (recoveryPercent < 80) {
-      statusColor = Colors.orangeAccent;
-      statusText = 'Recovering';
-    } else if (recoveryPercent < 100) {
-      statusColor = Colors.lightGreen;
-      statusText = 'Nearly Ready';
-    } else {
-      statusColor = Colors.green;
-      statusText = 'Prime Readiness';
+      if (recoveryPercent < 40) {
+        statusColor = Colors.redAccent;
+        statusText = 'Fatigued';
+      } else if (recoveryPercent < 80) {
+        statusColor = Colors.orangeAccent;
+        statusText = 'Recovering';
+      } else if (recoveryPercent < 100) {
+        statusColor = Colors.lightGreen;
+        statusText = 'Nearly Ready';
+      } else {
+        statusColor = Colors.green;
+        statusText = 'Prime Readiness';
+      }
+
+      int hoursLeft = (standardRecoveryHours - hoursElapsed).toInt();
+      String subtitle = hoursLeft > 0
+          ? 'Fully recovered in ~$hoursLeft hours'
+          : 'Fully recovered & ready';
+
+      return {
+        'percentage': recoveryPercent.toInt(),
+        'status': statusText,
+        'color': statusColor,
+        'subtitle': subtitle,
+      };
+    } catch (_) {
+      return {
+        'percentage': 100,
+        'status': 'Prime Readiness',
+        'color': Colors.green,
+        'subtitle': 'Fully fresh'
+      };
     }
-
-    int hoursLeft = (standardRecoveryHours - hoursElapsed).toInt();
-    String subtitle = hoursLeft > 0
-        ? 'Fully recovered in ~$hoursLeft hours'
-        : 'Fully recovered & ready';
-
-    return {
-      'percentage': recoveryPercent.toInt(),
-      'status': statusText,
-      'color': statusColor,
-      'subtitle': subtitle,
-    };
   }
 
   @override
@@ -95,7 +113,7 @@ class _MuscleRecoveryScreenState extends State<MuscleRecoveryScreen> {
         itemBuilder: (context, index) {
           final muscle = _recoveryData[index];
           String muscleName = muscle['muscle_name'];
-          String? lastTrained = muscle['last_trained'];
+          String? lastTrained = muscle['last_trained']?.toString();
 
           final recovery = _calculateRecovery(lastTrained);
           int percent = recovery['percentage'];
@@ -135,7 +153,6 @@ class _MuscleRecoveryScreenState extends State<MuscleRecoveryScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                // Linear progress bar for recovery
                 ClipRRect(
                   borderRadius: BorderRadius.circular(6),
                   child: LinearProgressIndicator(

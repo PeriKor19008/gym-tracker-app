@@ -482,6 +482,44 @@ class DatabaseHelper {
       GROUP BY mg.id
     ''');
   }
+  // --- Fetch detailed exercises and sets for a specific session ---
+  Future<List<Map<String, dynamic>>> getSessionDetails(int sessionId) async {
+    Database db = await database;
+    print("--- DEBUG SESSION DETAILS ---");
+    print("Requested Session ID: $sessionId");
+
+    final sessionExercises = await db.rawQuery('''
+      SELECT se.id as session_exercise_id, e.name as exercise_name
+      FROM Session_Exercises se
+      JOIN Exercises e ON se.exercise_id = e.id
+      WHERE se.session_id = ?
+      ORDER BY se.order_number ASC
+    ''', [sessionId]);
+
+    print("Found ${sessionExercises.length} exercises for session $sessionId");
+
+    List<Map<String, dynamic>> detailedExercises = [];
+
+    for (var se in sessionExercises) {
+      int seId = int.parse(se['session_exercise_id'].toString());
+      final sets = await db.rawQuery('''
+        SELECT set_number, weight, reps
+        FROM Sets
+        WHERE session_exercise_id = ?
+        ORDER BY set_number ASC
+      ''', [seId]);
+
+      print("Exercise '${se['exercise_name']}' has ${sets.length} sets.");
+
+      detailedExercises.add({
+        'exercise_name': se['exercise_name'],
+        'sets': sets,
+      });
+    }
+
+    print("-----------------------------");
+    return detailedExercises;
+  }
 
 
 }

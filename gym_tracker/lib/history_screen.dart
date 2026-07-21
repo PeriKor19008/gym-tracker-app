@@ -38,7 +38,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // DefaultTabController handles the swiping and tab state automatically
     return DefaultTabController(
       length: 2,
       child: Scaffold(
@@ -57,9 +56,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ? const Center(child: CircularProgressIndicator(color: Colors.teal))
             : TabBarView(
           children: [
-            // TAB 1: The General View (Analytics)
             _buildAnalyticsTab(),
-            // TAB 2: The Log List (History)
             _buildLogsTab(),
           ],
         ),
@@ -95,17 +92,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
     List<BarChartGroupData> barGroups = [];
     for (int i = 0; i < data.length; i++) {
       barGroups.add(
-          BarChartGroupData(
-            x: i,
-            barRods: [
-              BarChartRodData(
-                toY: (data[i]['workout_count'] as int).toDouble(),
-                color: Colors.blueAccent,
-                width: 16,
-                borderRadius: BorderRadius.circular(4),
-              )
-            ],
-          )
+        BarChartGroupData(
+          x: i,
+          barRods: [
+            BarChartRodData(
+              toY: (data[i]['workout_count'] as int).toDouble(),
+              color: Colors.blueAccent,
+              width: 16,
+              borderRadius: BorderRadius.circular(4),
+            )
+          ],
+        ),
       );
     }
 
@@ -134,7 +131,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         getTitlesWidget: (value, meta) {
                           int index = value.toInt();
                           if (index >= 0 && index < data.length) {
-                            // Extract just the month (e.g. '07' from '2026-07')
                             String month = data[index]['month'].toString().split('-').last;
                             return Padding(
                               padding: const EdgeInsets.only(top: 8.0),
@@ -184,7 +180,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   titlesData: const FlTitlesData(
                     rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
                     topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)), // Hide dates to keep it clean
+                    bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
                   ),
                   lineBarsData: [
                     LineChartBarData(
@@ -258,36 +254,137 @@ class _HistoryScreenState extends State<HistoryScreen> {
       itemCount: _sessions.length,
       itemBuilder: (context, index) {
         final session = _sessions[index];
+        // --- debug ---
+        print("Session Map Keys: ${session.keys}");
+        print("Session Full Data: $session");
+        // -------------------------
         DateTime date = DateTime.parse(session['start_time']);
         String formattedDate = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} at ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+        int sessionId = int.tryParse(session['session_id']?.toString() ?? '0') ?? 0;
 
         return Card(
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           color: Colors.grey[900],
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(formattedDate, style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 16)),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(color: Colors.teal.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
-                      child: Text('${session['exercise_count']} Exercises', style: const TextStyle(color: Colors.teal, fontSize: 12, fontWeight: FontWeight.bold)),
-                    )
-                  ],
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => SessionDetailScreen(
+                    sessionId: sessionId,
+                    formattedDate: formattedDate,
+                  ),
                 ),
-                const SizedBox(height: 12),
-                Text(session['exercise_names'] ?? 'No exercises recorded.', style: TextStyle(color: Colors.grey[400], height: 1.4)),
-              ],
+              );
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(formattedDate, style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 16)),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(color: Colors.teal.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
+                        child: Text('${session['exercise_count']} Exercises', style: const TextStyle(color: Colors.teal, fontSize: 12, fontWeight: FontWeight.bold)),
+                      )
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(session['exercise_names'] ?? 'No exercises recorded.', style: TextStyle(color: Colors.grey[400], height: 1.4)),
+                ],
+              ),
             ),
           ),
         );
       },
+    );
+  }
+}
+
+// ==========================================
+// SESSION DETAIL SCREEN
+// ==========================================
+class SessionDetailScreen extends StatelessWidget {
+  final int sessionId;
+  final String formattedDate;
+
+  const SessionDetailScreen({super.key, required this.sessionId, required this.formattedDate});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        title: Text(formattedDate),
+        elevation: 0,
+      ),
+      body: FutureBuilder<List<Map<String, dynamic>>>(
+        future: DatabaseHelper.instance.getSessionDetails(sessionId),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator(color: Colors.teal));
+          }
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return const Center(child: Text('No details found for this session.', style: TextStyle(color: Colors.grey)));
+          }
+
+          final exercises = snapshot.data!;
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: exercises.length,
+            itemBuilder: (context, index) {
+              final ex = exercises[index];
+              final exerciseName = ex['exercise_name'];
+              final List sets = ex['sets'];
+
+              return Card(
+                color: Colors.grey[900],
+                margin: const EdgeInsets.only(bottom: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        exerciseName,
+                        style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 12),
+                      const Divider(color: Colors.grey),
+                      const SizedBox(height: 8),
+                      ...sets.map<Widget>((s) {
+                        int setNum = s['set_number'];
+                        double weight = double.tryParse(s['weight'].toString()) ?? 0.0;
+                        int reps = int.tryParse(s['reps'].toString()) ?? 0;
+
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('Set $setNum', style: const TextStyle(color: Colors.grey)),
+                              Text('${weight.toStringAsFixed(1)} kg × $reps reps',
+                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }
