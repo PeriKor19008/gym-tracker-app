@@ -18,8 +18,19 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
   String _selectedMuscle = 'All';
 
   final List<String> _implements = ['All', 'Barbell', 'Dumbbell', 'Bodyweight', 'Cable', 'Machine'];
-  final List<String> _muscles = ['All', 'Chest', 'Back', 'Legs', 'Shoulders', 'Arms', 'Core'];
-
+  final List<String> _muscles = [
+    'All',
+    'Chest',
+    'Back',
+    'Quads',
+    'Hamstrings',
+    'Calves',
+    'Shoulders',
+    'Triceps',
+    'Biceps',
+    'Core',
+    'Glutes'
+  ];
   @override
   void initState() {
     super.initState();
