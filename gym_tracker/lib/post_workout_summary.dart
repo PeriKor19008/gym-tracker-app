@@ -202,12 +202,35 @@ class _PostWorkoutSummaryScreenState extends State<PostWorkoutSummaryScreen> {
     int colorIndex = 0;
 
     _muscleScores.forEach((muscle, score) {
+      String scoreStr = score.truncateToDouble() == score
+          ? score.toInt().toString()
+          : score.toStringAsFixed(1);
+
+      Color sectionColor = chartColors[colorIndex % chartColors.length];
+
       sections.add(PieChartSectionData(
-        color: chartColors[colorIndex % chartColors.length],
+        color: sectionColor,
         value: score,
+        // --- 1. Muscle name sits INSIDE the donut slice ---
         title: muscle,
-        radius: 40,
-        titleStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+        radius: 50,
+        titleStyle: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+        ),
+        titlePositionPercentageOffset: 0.55,
+
+        // --- 2. Clean set count text OUTSIDE with no box ---
+        badgeWidget: Text(
+          '$scoreStr sets',
+          style: TextStyle(
+            color: sectionColor, // Matches the slice color for a seamless look
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        badgePositionPercentageOffset: 1.35,
       ));
       colorIndex++;
     });
@@ -283,25 +306,28 @@ class _PostWorkoutSummaryScreenState extends State<PostWorkoutSummaryScreen> {
               const Text('Muscle Distribution', style: TextStyle(color: Colors.grey, fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
               SizedBox(
-                height: 200,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    PieChart(
-                      PieChartData(
-                        sectionsSpace: 2,
-                        centerSpaceRadius: 60,
-                        sections: _buildChartSections(),
+                height: 260, // <--- Increased height to comfortably fit outer perimeter labels
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      PieChart(
+                        PieChartData(
+                          sectionsSpace: 2,
+                          centerSpaceRadius: 60,
+                          sections: _buildChartSections(),
+                        ),
                       ),
-                    ),
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text('$_totalSets', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
-                        const Text('Sets', style: TextStyle(color: Colors.grey)),
-                      ],
-                    )
-                  ],
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('$_totalSets', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
+                          const Text('Sets', style: TextStyle(color: Colors.grey)),
+                        ],
+                      )
+                    ],
+                  ),
                 ),
               ),
             ],

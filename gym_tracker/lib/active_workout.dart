@@ -15,6 +15,9 @@ class WorkoutSet {
   TextEditingController weightController = TextEditingController();
   TextEditingController repsController = TextEditingController();
   bool isCompleted = false;
+  // --- NEW: Focus nodes to control keyboard actions ---
+  FocusNode weightFocusNode = FocusNode();
+  FocusNode repsFocusNode = FocusNode();
 }
 
 // Data model for an exercise added to the workout
@@ -486,13 +489,14 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: MediaQuery.of(context).viewInsets.bottom > 0
+          ? null
+          : FloatingActionButton.extended(
         onPressed: _addExercise,
         icon: const Icon(Icons.add),
         label: const Text('Add Exercise'),
         backgroundColor: Colors.blueAccent,
       ),
-      // Move FAB up slightly so it doesn't overlap the timer
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
@@ -588,7 +592,9 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                         margin: const EdgeInsets.symmetric(horizontal: 8),
                         child: TextField(
                           controller: workoutSet.weightController,
+                          focusNode: workoutSet.weightFocusNode,
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          textInputAction: TextInputAction.next,
                           textAlign: TextAlign.center,
                           decoration: InputDecoration(
                             filled: true,
@@ -604,7 +610,15 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                         margin: const EdgeInsets.symmetric(horizontal: 8),
                         child: TextField(
                           controller: workoutSet.repsController,
+                          focusNode: workoutSet.repsFocusNode,
                           keyboardType: TextInputType.number,
+                          textInputAction: TextInputAction.done,
+                          onSubmitted: (value) {
+                            setState(() {
+                              workoutSet.isCompleted = true; // <--- Automatically ticks the completed box
+                            });
+                            FocusScope.of(context).unfocus(); // <--- Closes the keyboard
+                          },
                           textAlign: TextAlign.center,
                           decoration: InputDecoration(
                             filled: true,
