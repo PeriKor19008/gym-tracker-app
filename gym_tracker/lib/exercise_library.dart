@@ -37,6 +37,103 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
     _loadExercises();
   }
 
+  // --- NEW: The Dialog to Create Exercise Variations ---
+  void _showVariationDialog(Map<String, dynamic> parentExercise) {
+    int parentId = int.parse(parentExercise['id'].toString());
+    String baseName = parentExercise['name'] ?? '';
+    String baseImplement = parentExercise['implement'] ?? 'Barbell';
+
+    TextEditingController nameController = TextEditingController(text: '$baseName (');
+    String selectedImplement = baseImplement;
+    bool isSwappable = true; // Default to true since variations are usually swappable
+
+    final creationImplements = _implements.where((i) => i != 'All').toList();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: Colors.grey[900],
+              title: Text('Create Variation of $baseName', style: const TextStyle(color: Colors.white, fontSize: 16)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Variation Name', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  const SizedBox(height: 5),
+                  TextField(
+                    controller: nameController,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: Colors.grey[800],
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+                  const Text('Equipment', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  const SizedBox(height: 5),
+                  DropdownButtonFormField<String>(
+                    value: selectedImplement,
+                    dropdownColor: Colors.grey[800],
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: Colors.grey[800],
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                    ),
+                    items: creationImplements.map((imp) => DropdownMenuItem(value: imp, child: Text(imp))).toList(),
+                    onChanged: (val) {
+                      if (val != null) setDialogState(() => selectedImplement = val);
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  CheckboxListTile(
+                    title: const Text('Swappable with parent', style: TextStyle(color: Colors.white, fontSize: 14)),
+                    subtitle: const Text('Allows swapping mid-workout', style: TextStyle(color: Colors.grey, fontSize: 11)),
+                    value: isSwappable,
+                    activeColor: Colors.blueAccent,
+                    contentPadding: EdgeInsets.zero,
+                    onChanged: (val) {
+                      if (val != null) setDialogState(() => isSwappable = val);
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
+                  onPressed: () async {
+                    String variationName = nameController.text.trim();
+                    if (variationName.isNotEmpty) {
+                      await DatabaseHelper.instance.createExerciseVariation(
+                        parentId: parentId,
+                        variationName: variationName,
+                        implement: selectedImplement,
+                        isSwappable: isSwappable,
+                      );
+                      if (mounted) {
+                        Navigator.pop(context);
+                        _loadExercises(); // Refresh list to show new variation
+                      }
+                    }
+                  },
+                  child: const Text('Create', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _loadExercises() async {
     final data = await DatabaseHelper.instance.searchExercises(
       query: _searchController.text,
@@ -229,12 +326,23 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
                       '${exercise['muscle'] ?? 'General'} • ${exercise['implement'] ?? 'Any'}',
                       style: TextStyle(color: Colors.grey[400]),
                     ),
-                    // THE PLUS BUTTON: Only this returns the data to the active workout
-                    trailing: IconButton(
-                      icon: const Icon(Icons.add_circle_outline, color: Colors.teal),
-                      onPressed: () {
-                        Navigator.pop(context, exercise);
-                      },
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // --- NEW: Variation / Fork Icon ---
+                        IconButton(
+                          icon: const Icon(Icons.call_split, color: Colors.orangeAccent, size: 20),
+                          tooltip: 'Create Variation',
+                          onPressed: () => _showVariationDialog(exercise),
+                        ),
+                        // THE PLUS BUTTON: Returns the data to the active workout
+                        IconButton(
+                          icon: const Icon(Icons.add_circle_outline, color: Colors.teal),
+                          onPressed: () {
+                            Navigator.pop(context, exercise);
+                          },
+                        ),
+                      ],
                     ),
                     // TAPPING THE TILE: Opens the Progression Graphs
                     onTap: () {

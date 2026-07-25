@@ -550,6 +550,88 @@ class DatabaseHelper {
       print('The table might not exist yet. Error details: $e\n');
     }
   }
+  // --- Fetch curated alternatives for an exercise ---
+  Future<List<Map<String, dynamic>>> getExerciseAlternatives(int exerciseId) async {
+    Database db = await database;
+    return await db.rawQuery('''
+      SELECT e.id, e.name, e.implement
+      FROM Exercise_Alternatives ea
+      JOIN Exercises e ON ea.exercise_b_id = e.id
+      WHERE ea.exercise_a_id = ?
+      ORDER BY e.name ASC
+    ''', [exerciseId]);
+  }
+
+  // --- Add a new alternative link bidirectionally ---
+  Future<void> addExerciseAlternative(int exerciseAId, int exerciseBId) async {
+    Database db = await database;
+    await db.insert(
+      'Exercise_Alternatives',
+      {'exercise_a_id': exerciseAId, 'exercise_b_id': exerciseBId},
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+    await db.insert(
+      'Exercise_Alternatives',
+      {'exercise_a_id': exerciseBId, 'exercise_b_id': exerciseAId},
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
+
+  // --- Create an Exercise Variation (Modifier) ---
+  Future<void> createExerciseVariation({
+    required int parentId,
+    required String variationName,
+    required String implement,
+    required bool isSwappable,
+  }) async {
+    Database db = await database;
+
+    await db.transaction((txn) async {
+      // 1. Insert the new variation into Exercises
+      int newExerciseId = await txn.insert(
+        'Exercises',
+        {
+          'name': variationName,
+          'implement': implement,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+
+      // 2. Fetch the muscle group mappings of the parent exercise
+      List<Map<String, dynamic>> parentMuscles = await txn.query(
+        'Exercise_Muscles',
+        where: 'exercise_id = ?',
+        whereArgs: [parentId],
+      );
+
+      // 3. Copy those exact muscle mappings to the new variation
+      for (var pm in parentMuscles) {
+        await txn.insert(
+          'Exercise_Muscles',
+          {
+            'exercise_id': newExerciseId,
+            'muscle_id': pm['muscle_id'],
+            'is_primary': pm['is_primary'],
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+
+      // 4. If checked as swappable, link them bidirectionally in Exercise_Alternatives
+      if (isSwappable) {
+        await txn.insert(
+          'Exercise_Alternatives',
+          {'exercise_a_id': parentId, 'exercise_b_id': newExerciseId},
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+        await txn.insert(
+          'Exercise_Alternatives',
+          {'exercise_a_id': newExerciseId, 'exercise_b_id': parentId},
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+      }
+    });
+  }
 
 
 }

@@ -6,6 +6,9 @@ import 'database_helper.dart';
 import 'post_workout_summary.dart';
 import 'exercise_details_screen.dart';
 import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
+import 'workout_foreground_task.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+
 
 // Data model for a single set
 class WorkoutSet {
@@ -47,6 +50,8 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   @override
   void initState() {
     super.initState();
+    _initForegroundTask();
+    _requestNotificationPermission();
     DatabaseHelper.instance.testAlternatives();
     if (widget.sessionId != null) {
       _loadRoutineExercises();
@@ -60,27 +65,224 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
     super.dispose();
   }
 
+  // --- FOREGROUND SERVICE CONTROLS ---
+
+  void _initForegroundTask() {
+    FlutterForegroundTask.init(
+      androidNotificationOptions: AndroidNotificationOptions(
+        channelId: 'gym_tracker_rest_timer',
+        channelName: 'Workout Rest Timer',
+        channelDescription: 'Active rest timer running in background',
+        channelImportance: NotificationChannelImportance.LOW,
+        priority: NotificationPriority.LOW,
+      ),
+      iosNotificationOptions: const IOSNotificationOptions(
+        showNotification: true,
+        playSound: false,
+      ),
+      foregroundTaskOptions:  ForegroundTaskOptions(
+        eventAction: ForegroundTaskEventAction.repeat(1000),
+        autoRunOnBoot: false,
+        allowWakeLock: true,
+        allowWifiLock: false,
+      ),
+    );
+  }
+
+  Future<void> _requestNotificationPermission() async {
+    // Check if notification permission is granted, if not request it
+    NotificationPermission permission = await FlutterForegroundTask.checkNotificationPermission();
+    if (permission != NotificationPermission.granted) {
+      await FlutterForegroundTask.requestNotificationPermission();
+    }
+  }
+
+  Future<void> _startForegroundService() async {
+    if (await FlutterForegroundTask.isRunningService) {
+      return;
+    }
+
+    await FlutterForegroundTask.startService(
+      serviceId: 256,
+      notificationTitle: 'Gym Tracker Active',
+      notificationText: 'Rest Timer: ${_formatTime(_restSeconds)}',
+      callback: startCallback,
+    );
+  }
+
+  Future<void> _stopForegroundService() async {
+    if (await FlutterForegroundTask.isRunningService) {
+      await FlutterForegroundTask.stopService();
+    }
+  }
+
+  // --- SWAP & SPLIT LOGIC ---
+
+  void _showSwapBottomSheet(int exerciseIndex) async {
+    final currentExercise = _workoutExercises[exerciseIndex];
+    int exerciseId = currentExercise.exerciseData['id'] ?? currentExercise.exerciseData['exercise_id'];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.grey[900],
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            return FutureBuilder<List<Map<String, dynamic>>>(
+              future: DatabaseHelper.instance.getExerciseAlternatives(exerciseId),
+              builder: (context, snapshot) {
+                List<Map<String, dynamic>> alternatives = snapshot.data ?? [];
+
+                return Container(
+                  padding: const EdgeInsets.all(20),
+                  height: 420,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'Swap Alternatives for ${currentExercise.exerciseData['name']}',
+                        style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 15),
+                      Expanded(
+                        child: snapshot.connectionState == ConnectionState.waiting
+                            ? const Center(child: CircularProgressIndicator())
+                            : alternatives.isEmpty
+                            ? const Center(
+                          child: Text(
+                            'No curated alternatives found for this exercise.',
+                            style: TextStyle(color: Colors.grey),
+                            textAlign: TextAlign.center,
+                          ),
+                        )
+                            : ListView.builder(
+                          itemCount: alternatives.length,
+                          itemBuilder: (context, index) {
+                            var alt = alternatives[index];
+                            return ListTile(
+                              title: Text(alt['name'], style: const TextStyle(color: Colors.white)),
+                              subtitle: Text(alt['implement'], style: const TextStyle(color: Colors.grey)),
+                              trailing: const Icon(Icons.arrow_forward_ios, color: Colors.grey, size: 16),
+                              onTap: () {
+                                Navigator.pop(context);
+                                _executeSwapOrSplit(exerciseIndex, alt);
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      // --- ADD RELATED EXERCISE BUTTON ---
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blueAccent,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: const Icon(Icons.add, color: Colors.white),
+                        label: const Text('Add Related Exercise', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        onPressed: () async {
+                          // 1. Open your library to select an exercise
+                          final selectedExercise = await Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const ExerciseLibraryScreen()),
+                          );
+
+                          if (selectedExercise != null) {
+                            int newExId = int.parse(selectedExercise['id'].toString());
+
+                            // Prevent linking an exercise to itself
+                            if (newExId != exerciseId) {
+                              // 2. Save link bidirectionally in database
+                              await DatabaseHelper.instance.addExerciseAlternative(exerciseId, newExId);
+
+                              // 3. Refresh the modal view so the new alternative shows up instantly
+                              setModalState(() {});
+                            }
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _executeSwapOrSplit(int index, Map<String, dynamic> newExerciseData) {
+    setState(() {
+      var currentActiveEx = _workoutExercises[index];
+      List<WorkoutSet> sets = currentActiveEx.sets;
+
+      // Check if any set has data entered or is marked completed
+      bool hasCompletedSets = sets.any((s) =>
+      s.isCompleted ||
+          (double.tryParse(s.weightController.text) ?? 0) > 0 ||
+          (int.tryParse(s.repsController.text) ?? 0) > 0
+      );
+
+      if (!hasCompletedSets) {
+        // --- SCENARIO A: CLEAN SWAP (Zero sets done) ---
+        // Overwrite the exercise entirely in place
+        _workoutExercises[index] = ActiveExercise(newExerciseData);
+      } else {
+        // --- SCENARIO B: MID-WORKOUT SPLIT ---
+        // 1. Keep only the completed sets on the original exercise block
+        List<WorkoutSet> completedSets = sets.where((s) =>
+        s.isCompleted ||
+            (double.tryParse(s.weightController.text) ?? 0) > 0 ||
+            (int.tryParse(s.repsController.text) ?? 0) > 0
+        ).toList();
+
+        currentActiveEx.sets = completedSets;
+
+        // 2. Create the new alternative exercise block with fresh empty sets to finish volume
+        ActiveExercise splitExercise = ActiveExercise(newExerciseData);
+        splitExercise.sets = [WorkoutSet(), WorkoutSet(), WorkoutSet()];
+
+        // 3. Insert the new exercise directly below the current one
+        _workoutExercises.insert(index + 1, splitExercise);
+      }
+    });
+  }
+
   // --- NEW: Timer Logic Methods ---
   void _startTimer() {
     if (_restTimer != null) _restTimer!.cancel();
 
     setState(() {
-      // If someone presses start while it says 00:00, refill it first
       if (_restSeconds == 0) {
         _restSeconds = _baseRestSeconds;
       }
       _isTimerRunning = true;
     });
 
+    // --- START BACKGROUND SERVICE ---
+    _startForegroundService();
+
     _restTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
         if (_restSeconds > 0) {
           _restSeconds--;
+          // --- UPDATE NOTIFICATION SHADE IN REAL-TIME ---
+          FlutterForegroundTask.updateService(
+            notificationTitle: 'Rest Period Active',
+            notificationText: 'Time remaining: ${_formatTime(_restSeconds)}',
+          );
         } else {
           _stopTimer();
-          // --- THE FIX: Snap the clock back to the memorized time! ---
           _restSeconds = _baseRestSeconds;
           FlutterRingtonePlayer().playNotification();
+          // --- STOP SERVICE WHEN TIMER ENDS ---
+          _stopForegroundService();
         }
       });
     });
@@ -89,6 +291,8 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   void _stopTimer() {
     _restTimer?.cancel();
     setState(() => _isTimerRunning = false);
+    // --- STOP SERVICE WHEN PAUSED/STOPPED ---
+    _stopForegroundService();
   }
 
   void _resetTimer(int seconds) {
@@ -195,7 +399,8 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
     try {
       await DatabaseHelper.instance.saveWorkoutSession(exercisesToSave);
 
-
+      // --- STOP SERVICE ---
+      await _stopForegroundService();
       // --- Go to Summary Screen ---
       if (mounted) {
         Navigator.pushReplacement(
@@ -238,7 +443,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
         itemCount: _workoutExercises.length,
         itemBuilder: (context, exerciseIndex) {
           final activeExercise = _workoutExercises[exerciseIndex];
-          return _buildExerciseCard(activeExercise);
+          return _buildExerciseCard(activeExercise, exerciseIndex);
         },
       ),
       // --- NEW: Persistent Rest Timer Banner ---
@@ -248,9 +453,14 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            TextButton(
+            _isTimerRunning
+                ? TextButton(
               onPressed: () => _adjustTimer(-15),
               child: const Text('-15s', style: TextStyle(color: Colors.grey)),
+            )
+                : TextButton(
+              onPressed: () => _resetTimer(_baseRestSeconds),
+              child: const Text('RESET', style: TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold)),
             ),
             Text(
               _formatTime(_restSeconds),
@@ -287,7 +497,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
     );
   }
 
-  Widget _buildExerciseCard(ActiveExercise activeExercise) {
+  Widget _buildExerciseCard(ActiveExercise activeExercise, int exerciseIndex) {
     final exerciseMap = activeExercise.exerciseData;
     int exId = exerciseMap['id'] ?? exerciseMap['exercise_id'];
     return Card(
@@ -308,19 +518,27 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                     style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueAccent),
                   ),
                 ),
-                // --- HISTORY BUTTON ---
-                IconButton(
-                  icon: const Icon(Icons.history, color: Colors.tealAccent),
-                  tooltip: 'View Exercise Analytics',
-                  onPressed: () {
-                    // Opens your existing ExerciseDetailsScreen with charts and logs
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => ExerciseDetailsScreen(exercise: exerciseMap),
-                      ),
-                    );
-                  },
+                // --- ACTION BUTTONS (SWAP & HISTORY) ---
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.swap_horiz, color: Colors.orangeAccent),
+                      tooltip: 'Swap Exercise',
+                      onPressed: () => _showSwapBottomSheet(exerciseIndex), // <--- Triggers swap sheet
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.history, color: Colors.tealAccent),
+                      tooltip: 'View Exercise Analytics',
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ExerciseDetailsScreen(exercise: exerciseMap),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
               ],
             ),
