@@ -34,7 +34,7 @@ class DatabaseHelper {
       print("Opening existing database...");
     }
 
-    return await openDatabase(dbPath, version: 1);
+    return await openDatabase(dbPath, version: 2,);
   }
 
   // A simple test query
@@ -519,6 +519,36 @@ class DatabaseHelper {
 
     print("-----------------------------");
     return detailedExercises;
+  }
+
+  // --- DIAGNOSTIC TEST FOR ALTERNATIVES ---
+  Future<void> testAlternatives() async {
+    Database db = await database;
+
+    try {
+      // We join the Exercises table twice to get the actual text names instead of just IDs
+      List<Map<String, dynamic>> results = await db.rawQuery('''
+        SELECT a.name AS original_exercise, b.name AS alternative_exercise
+        FROM Exercise_Alternatives ea
+        JOIN Exercises a ON ea.exercise_a_id = a.id
+        JOIN Exercises b ON ea.exercise_b_id = b.id
+        WHERE ea.exercise_a_id = 1
+      ''');
+
+      print('\n=== EXERCISE ALTERNATIVES TEST ===');
+      if (results.isEmpty) {
+        print('Table exists, but no data was found for ID 1.');
+      } else {
+        for (var row in results) {
+          print('${row['original_exercise']}  -->  ${row['alternative_exercise']}');
+        }
+      }
+      print('==================================\n');
+
+    } catch (e) {
+      print('\n=== TEST FAILED ===');
+      print('The table might not exist yet. Error details: $e\n');
+    }
   }
 
 

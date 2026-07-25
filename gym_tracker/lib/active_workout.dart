@@ -47,6 +47,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   @override
   void initState() {
     super.initState();
+    DatabaseHelper.instance.testAlternatives();
     if (widget.sessionId != null) {
       _loadRoutineExercises();
     }
