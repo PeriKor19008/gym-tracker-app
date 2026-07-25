@@ -6,7 +6,9 @@ plugins {
 
 android {
     namespace = "com.example.gym_tracker"
-    compileSdk = flutter.compileSdkVersion
+
+    // --- CHANGED: Force compileSdk to 34 ---
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -20,7 +22,10 @@ android {
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+
+        // --- CHANGED: Force targetSdk to 34 ---
+        targetSdk = 36
+
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }

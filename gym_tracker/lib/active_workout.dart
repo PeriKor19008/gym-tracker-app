@@ -5,6 +5,7 @@ import 'exercise_library.dart';
 import 'database_helper.dart';
 import 'post_workout_summary.dart';
 import 'exercise_details_screen.dart';
+import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 
 // Data model for a single set
 class WorkoutSet {
@@ -40,6 +41,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   // --- NEW: Timer State Variables ---
   Timer? _restTimer;
   int _restSeconds = 90; // Default rest time: 1m 30s
+  int _baseRestSeconds = 90; // <--- ADD THIS: Remembers your preferred rest time
   bool _isTimerRunning = false;
 
   @override
@@ -60,7 +62,14 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   // --- NEW: Timer Logic Methods ---
   void _startTimer() {
     if (_restTimer != null) _restTimer!.cancel();
-    setState(() => _isTimerRunning = true);
+
+    setState(() {
+      // If someone presses start while it says 00:00, refill it first
+      if (_restSeconds == 0) {
+        _restSeconds = _baseRestSeconds;
+      }
+      _isTimerRunning = true;
+    });
 
     _restTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
@@ -68,7 +77,9 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
           _restSeconds--;
         } else {
           _stopTimer();
-          // Optional: Add haptic feedback or a sound here later!
+          // --- THE FIX: Snap the clock back to the memorized time! ---
+          _restSeconds = _baseRestSeconds;
+          FlutterRingtonePlayer().playNotification();
         }
       });
     });
@@ -88,6 +99,11 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
     setState(() {
       _restSeconds += seconds;
       if (_restSeconds < 0) _restSeconds = 0;
+
+      // If you adjust the clock while paused, remember this as the new default
+      if (!_isTimerRunning) {
+        _baseRestSeconds = _restSeconds;
+      }
     });
   }
 
@@ -217,7 +233,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
       body: _workoutExercises.isEmpty
           ? const Center(child: Text("Tap '+' to add your first exercise", style: TextStyle(color: Colors.grey)))
           : ListView.builder(
-        padding: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.only(bottom: 100),
         itemCount: _workoutExercises.length,
         itemBuilder: (context, exerciseIndex) {
           final activeExercise = _workoutExercises[exerciseIndex];
