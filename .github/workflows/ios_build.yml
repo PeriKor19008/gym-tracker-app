@@ -10,13 +10,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Debugging steps to see exactly what GitHub downloaded
-      - name: Check root files
-        run: ls -la
-
-      - name: Check gym_tracker files
-        run: ls -la gym_tracker
-
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -24,14 +17,23 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
-        working-directory: gym_tracker # Explicitly set here
+        working-directory: gym_tracker
+
+      # NEW STEP: Hacks the Xcode project to stop looking for an Apple ID
+      - name: Disable Automatic Provisioning & Code Signing
+        working-directory: gym_tracker
+        run: |
+          sed -i '' 's/ProvisioningStyle = Automatic;/ProvisioningStyle = Manual;/g' ios/Runner.xcodeproj/project.pbxproj
+          echo "CODE_SIGNING_REQUIRED=NO" >> ios/Flutter/Release.xcconfig
+          echo "CODE_SIGNING_ALLOWED=NO" >> ios/Flutter/Release.xcconfig
+          echo "CODE_SIGN_IDENTITY=" >> ios/Flutter/Release.xcconfig
 
       - name: Build unsigned iOS app
         run: flutter build ios --release --no-codesign
-        working-directory: gym_tracker # Explicitly set here
+        working-directory: gym_tracker
 
       - name: Package into IPA file
-        working-directory: gym_tracker # Explicitly set here
+        working-directory: gym_tracker
         run: |
           mkdir -p build/ios/iphoneos/Payload
           mv build/ios/iphoneos/Runner.app build/ios/iphoneos/Payload/
