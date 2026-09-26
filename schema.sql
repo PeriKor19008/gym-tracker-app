@@ -42,3 +42,11 @@ CREATE TABLE Sets (
     reps INTEGER NOT NULL,
     FOREIGN KEY (session_exercise_id) REFERENCES Session_Exercises(id) ON DELETE CASCADE
 );
+CREATE TABLE Exercise_Alternatives (
+    exercise_a_id INTEGER,
+    exercise_b_id INTEGER,
+    PRIMARY KEY (exercise_a_id, exercise_b_id),
+    FOREIGN KEY (exercise_a_id) REFERENCES Exercises(id) ON DELETE CASCADE,
+    FOREIGN KEY (exercise_b_id) REFERENCES Exercises(id) ON DELETE CASCADE,
+    CHECK (exercise_a_id != exercise_b_id)
+);

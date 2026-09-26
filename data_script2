@@ -1,0 +1,243 @@
+-- 1. POPULATE 100 NEW EXERCISES (IDs 51-150)
+INSERT INTO Exercises (id, name, implement) VALUES 
+-- Chest (51-60)
+(51, 'Decline Barbell Press', 'Barbell'),
+(52, 'Decline Dumbbell Press', 'Dumbbell'),
+(53, 'Incline Dumbbell Press', 'Dumbbell'),
+(54, 'Incline Cable Fly', 'Cable'),
+(55, 'Flat Dumbbell Fly', 'Dumbbell'),
+(56, 'Incline Dumbbell Fly', 'Dumbbell'),
+(57, 'Smith Machine Bench Press', 'Machine'),
+(58, 'Floor Press', 'Barbell'),
+(59, 'Plate Press', 'Plate'),
+(60, 'Guillotine Press', 'Barbell'),
+
+-- Back (61-75)
+(61, 'Pendlay Row', 'Barbell'),
+(62, 'Chest-Supported Row', 'Machine'),
+(63, 'Meadows Row', 'Barbell'),
+(64, 'Single-Arm Cable Row', 'Cable'),
+(65, 'Straight-Arm Pulldown', 'Cable'),
+(66, 'Inverted Row', 'Bodyweight'),
+(67, 'Rack Pull', 'Barbell'),
+(68, 'Good Morning', 'Barbell'),
+(69, 'Hyperextension', 'Bodyweight'),
+(70, 'Kroc Row', 'Dumbbell'),
+(71, 'Renegade Row', 'Dumbbell'),
+(72, 'V-Bar Pulldown', 'Cable'),
+(73, 'Reverse Grip Pulldown', 'Cable'),
+(74, 'Wide-Grip Pull-up', 'Bodyweight'),
+(75, 'Weighted Pull-up', 'Bodyweight'),
+
+-- Quads (76-85)
+(76, 'Sissy Squat', 'Bodyweight'),
+(77, 'Goblet Squat', 'Kettlebell'),
+(78, 'Zercher Squat', 'Barbell'),
+(79, 'Smith Machine Squat', 'Machine'),
+(80, 'Box Squat', 'Barbell'),
+(81, 'Pistol Squat', 'Bodyweight'),
+(82, 'Step-up', 'Dumbbell'),
+(83, 'Forward Lunge', 'Dumbbell'),
+(84, 'Reverse Lunge', 'Dumbbell'),
+(85, 'Spanish Squat', 'Bodyweight'),
+
+-- Hamstrings (86-93)
+(86, 'Glute-Ham Raise', 'Bodyweight'),
+(87, 'Stiff-Legged Deadlift', 'Barbell'),
+(88, 'Deficit Deadlift', 'Barbell'),
+(89, 'Kettlebell Swing', 'Kettlebell'),
+(90, 'Single-Leg Romanian Deadlift', 'Dumbbell'),
+(91, 'Sliding Leg Curl', 'Bodyweight'),
+(92, 'Nordic Hamstring Curl', 'Bodyweight'),
+(93, 'Sumo Deadlift', 'Barbell'),
+
+-- Glutes (94-102)
+(94, 'Frog Pump', 'Bodyweight'),
+(95, 'Curtsy Lunge', 'Bodyweight'),
+(96, 'Hip Abductor Machine', 'Machine'),
+(97, 'Cable Kickback', 'Cable'),
+(98, 'Dumbbell Hip Thrust', 'Dumbbell'),
+(99, 'Single-Leg Hip Thrust', 'Bodyweight'),
+(100, 'Reverse Hyperextension', 'Machine'),
+(101, 'Fire Hydrant', 'Bodyweight'),
+(102, 'Donkey Kick', 'Bodyweight'),
+
+-- Calves (103-108)
+(103, 'Donkey Calf Raise', 'Machine'),
+(104, 'Leg Press Calf Raise', 'Machine'),
+(105, 'Single-Leg Calf Raise', 'Bodyweight'),
+(106, 'Smith Machine Calf Raise', 'Machine'),
+(107, 'Farmers Walk on Toes', 'Dumbbell'),
+(108, 'Seated Dumbbell Calf Raise', 'Dumbbell'),
+
+-- Shoulders (109-122)
+(109, 'Seated Dumbbell Press', 'Dumbbell'),
+(110, 'Push Press', 'Barbell'),
+(111, 'Bradford Press', 'Barbell'),
+(112, 'Z-Press', 'Barbell'),
+(113, 'Upright Row', 'Barbell'),
+(114, 'Front Raise', 'Dumbbell'),
+(115, 'Cable Front Raise', 'Cable'),
+(116, 'Leaning Lateral Raise', 'Dumbbell'),
+(117, 'Lu Raise', 'Dumbbell'),
+(118, 'Cable Y-Raise', 'Cable'),
+(119, 'Machine Shoulder Press', 'Machine'),
+(120, 'Dumbbell Shrug', 'Dumbbell'),
+(121, 'Barbell Shrug', 'Barbell'),
+(122, 'Farmers Walk', 'Dumbbell'),
+
+-- Triceps (123-132)
+(123, 'JM Press', 'Barbell'),
+(124, 'Tate Press', 'Dumbbell'),
+(125, 'French Press', 'Barbell'),
+(126, 'Single-Arm Tricep Pushdown', 'Cable'),
+(127, 'Reverse Grip Tricep Pushdown', 'Cable'),
+(128, 'Overhead Rope Extension', 'Cable'),
+(129, 'Dumbbell Overhead Extension', 'Dumbbell'),
+(130, 'Diamond Push-up', 'Bodyweight'),
+(131, 'Bench Dip', 'Bodyweight'),
+(132, 'Lying Tricep Extension', 'Dumbbell'),
+
+-- Biceps (133-142)
+(133, 'Concentration Curl', 'Dumbbell'),
+(134, 'Spider Curl', 'Dumbbell'),
+(135, 'Incline Dumbbell Curl', 'Dumbbell'),
+(136, 'Zottman Curl', 'Dumbbell'),
+(137, 'Reverse Curl', 'Barbell'),
+(138, 'Rope Hammer Curl', 'Cable'),
+(139, 'High Cable Curl', 'Cable'),
+(140, 'Bayesian Curl', 'Cable'),
+(141, 'EZ Bar Curl', 'Barbell'),
+(142, 'Drag Curl', 'Barbell'),
+
+-- Core (143-150)
+(143, 'Ab Wheel Rollout', 'Bodyweight'),
+(144, 'Bicycle Crunch', 'Bodyweight'),
+(145, 'V-Up', 'Bodyweight'),
+(146, 'Toe Touch', 'Bodyweight'),
+(147, 'Dead Bug', 'Bodyweight'),
+(148, 'Suitcase Carry', 'Dumbbell'),
+(149, 'Woodchopper', 'Cable'),
+(150, 'Hollow Body Hold', 'Bodyweight');
+
+-- 2. LINK NEW EXERCISES TO MUSCLES (Junction Table)
+INSERT INTO Exercise_Muscles (exercise_id, muscle_id, is_primary) VALUES 
+-- Chest Links (1: Chest, 7: Triceps, 6: Shoulders)
+(51, 1, 1), (51, 7, 0), (51, 6, 0),
+(52, 1, 1), (52, 7, 0), (52, 6, 0),
+(53, 1, 1), (53, 7, 0), (53, 6, 0),
+(54, 1, 1), (54, 6, 0),
+(55, 1, 1), (55, 6, 0),
+(56, 1, 1), (56, 6, 0),
+(57, 1, 1), (57, 7, 0), (57, 6, 0),
+(58, 1, 1), (58, 7, 0),
+(59, 1, 1), (59, 7, 0),
+(60, 1, 1), (60, 6, 0),
+
+-- Back Links (2: Back, 8: Biceps, 10: Glutes, 4: Hamstrings)
+(61, 2, 1), (61, 8, 0),
+(62, 2, 1), (62, 8, 0),
+(63, 2, 1), (63, 8, 0),
+(64, 2, 1), (64, 8, 0),
+(65, 2, 1), (65, 7, 0), -- Triceps long head stabilizes
+(66, 2, 1), (66, 8, 0),
+(67, 2, 1), (67, 4, 0), (67, 10, 0),
+(68, 4, 1), (68, 10, 1), (68, 2, 0), -- Good morning hits hams/glutes heavily
+(69, 2, 1), (69, 10, 0), (69, 4, 0),
+(70, 2, 1), (70, 8, 0),
+(71, 2, 1), (71, 9, 0), -- Core works hard on renegade rows
+(72, 2, 1), (72, 8, 0),
+(73, 2, 1), (73, 8, 0),
+(74, 2, 1), (74, 8, 0),
+(75, 2, 1), (75, 8, 0),
+
+-- Quads Links (3: Quads, 10: Glutes, 9: Core)
+(76, 3, 1), 
+(77, 3, 1), (77, 9, 0),
+(78, 3, 1), (78, 9, 0), (78, 2, 0),
+(79, 3, 1), (79, 10, 0),
+(80, 3, 1), (80, 10, 0), (80, 4, 0),
+(81, 3, 1), (81, 10, 0), (81, 9, 0),
+(82, 3, 1), (82, 10, 0),
+(83, 3, 1), (83, 10, 0),
+(84, 3, 1), (84, 10, 0),
+(85, 3, 1),
+
+-- Hamstrings Links (4: Hamstrings, 10: Glutes, 2: Back)
+(86, 4, 1), (86, 10, 0),
+(87, 4, 1), (87, 10, 1), (87, 2, 0),
+(88, 4, 1), (88, 10, 1), (88, 2, 0),
+(89, 4, 1), (89, 10, 1), (89, 9, 0),
+(90, 4, 1), (90, 10, 1),
+(91, 4, 1),
+(92, 4, 1),
+(93, 4, 1), (93, 10, 1), (93, 3, 0), (93, 2, 0), -- Sumo DL incorporates quads
+
+-- Glutes Links (10: Glutes, 4: Hamstrings)
+(94, 10, 1),
+(95, 10, 1), (95, 3, 0),
+(96, 10, 1),
+(97, 10, 1), (97, 4, 0),
+(98, 10, 1), (98, 4, 0),
+(99, 10, 1), (99, 4, 0),
+(100, 10, 1), (100, 4, 0), (100, 2, 0),
+(101, 10, 1),
+(102, 10, 1),
+
+-- Calves Links (5: Calves)
+(103, 5, 1),
+(104, 5, 1),
+(105, 5, 1),
+(106, 5, 1),
+(107, 5, 1), (107, 9, 0),
+(108, 5, 1),
+
+-- Shoulders Links (6: Shoulders, 7: Triceps, 2: Back)
+(109, 6, 1), (109, 7, 0),
+(110, 6, 1), (110, 7, 0), (110, 3, 0), -- Quads assist push press
+(111, 6, 1), (111, 7, 0),
+(112, 6, 1), (112, 7, 0), (112, 9, 0), -- Core heavy
+(113, 6, 1), (113, 2, 0),
+(114, 6, 1),
+(115, 6, 1),
+(116, 6, 1),
+(117, 6, 1),
+(118, 6, 1),
+(119, 6, 1), (119, 7, 0),
+(120, 2, 1), (120, 6, 0), -- Shrugs hit Traps (Back primary, Shoulder secondary)
+(121, 2, 1), (121, 6, 0),
+(122, 9, 1), (122, 2, 0), (122, 6, 0), -- Farmers Walk (Core primary, Back/Shoulder support)
+
+-- Triceps Links (7: Triceps, 1: Chest)
+(123, 7, 1), (123, 1, 0),
+(124, 7, 1),
+(125, 7, 1),
+(126, 7, 1),
+(127, 7, 1),
+(128, 7, 1),
+(129, 7, 1),
+(130, 7, 1), (130, 1, 0), (130, 6, 0), -- Diamond pushups hit chest/shoulders too
+(131, 7, 1), (131, 1, 0), (131, 6, 0),
+(132, 7, 1),
+
+-- Biceps Links (8: Biceps)
+(133, 8, 1),
+(134, 8, 1),
+(135, 8, 1),
+(136, 8, 1),
+(137, 8, 1), (137, 2, 0),
+(138, 8, 1),
+(139, 8, 1),
+(140, 8, 1),
+(141, 8, 1),
+(142, 8, 1),
+
+-- Core Links (9: Core)
+(143, 9, 1), (143, 2, 0),
+(144, 9, 1),
+(145, 9, 1),
+(146, 9, 1),
+(147, 9, 1),
+(148, 9, 1),
+(149, 9, 1),
+(150, 9, 1);

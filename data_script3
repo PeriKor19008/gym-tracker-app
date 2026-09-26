@@ -1,0 +1,100 @@
+-- CLEAR EXISTING TO PREVENT DUPLICATES DURING TESTING
+DELETE FROM Exercise_Alternatives;
+
+INSERT INTO Exercise_Alternatives (exercise_a_id, exercise_b_id) VALUES
+
+-- ==========================================
+-- CHEST
+-- ==========================================
+-- Flat Presses (1: Barbell, 2: Dumbbell, 57: Smith Machine, 60: Guillotine)
+(1, 2), (1, 57), (1, 60),
+(2, 1), (2, 57), (2, 60),
+(57, 1), (57, 2), (57, 60),
+(60, 1), (60, 2), (60, 57),
+
+-- Incline Presses (3: Incline Barbell, 53: Incline Dumbbell)
+(3, 53),
+(53, 3),
+
+-- Decline Presses (51: Decline Barbell, 52: Decline Dumbbell)
+(51, 52),
+(52, 51),
+
+-- Horizontal Fly Variations (5: Cable Crossover, 6: Pec Deck, 55: Flat Dumbbell Fly)
+(5, 6), (5, 55),
+(6, 5), (6, 55),
+(55, 5), (55, 6),
+
+-- ==========================================
+-- BACK
+-- ==========================================
+-- Vertical Pulls (9: Pull-up, 10: Lat Pulldown, 72: V-Bar, 74: Wide-Grip Pull-up)
+(9, 10), (9, 74),
+(10, 9), (10, 72), (10, 74),
+(72, 10), (72, 9),
+(74, 9), (74, 10),
+
+-- Horizontal Rows (11: BB Row, 12: DB Row, 13: Cable Row, 14: T-Bar, 62: Chest-Supported)
+(11, 12), (11, 13), (11, 14), (11, 62),
+(12, 11), (12, 13), (12, 14), (12, 62),
+(13, 11), (13, 12), (13, 14), (13, 62),
+(14, 11), (14, 12), (14, 13), (14, 62),
+(62, 11), (62, 12), (62, 13), (62, 14),
+
+-- ==========================================
+-- QUADS & GLUTES
+-- ==========================================
+-- Heavy Squat Variations (15: BB Squat, 18: Front Squat, 20: Hack Squat, 79: Smith Machine Squat)
+(15, 18), (15, 20), (15, 79),
+(18, 15), (18, 20), (18, 79),
+(20, 15), (20, 18), (20, 79),
+(79, 15), (79, 18), (79, 20),
+
+-- Unilateral Leg Movements (19: Walking Lunge, 21: Bulgarian Split Squat, 84: Reverse Lunge)
+(19, 21), (19, 84),
+(21, 19), (21, 84),
+(84, 19), (84, 21),
+
+-- Hip Hinges (8: Deadlift, 22: RDL, 87: Stiff-Legged Deadlift)
+(8, 22), (8, 87),
+(22, 8), (22, 87),
+(87, 8), (87, 22),
+
+-- Leg Curls (23: Lying Leg Curl, 24: Seated Leg Curl)
+(23, 24),
+(24, 23),
+
+-- ==========================================
+-- SHOULDERS
+-- ==========================================
+-- Vertical Presses (30: OHP, 35: Arnold Press, 109: Seated DB Press, 119: Machine Press)
+(30, 35), (30, 109), (30, 119),
+(35, 30), (35, 109), (35, 119),
+(109, 30), (109, 35), (109, 119),
+(119, 30), (119, 35), (119, 109),
+
+-- Lateral Raises (31: DB Lateral Raise, 32: Cable Lateral Raise)
+(31, 32),
+(32, 31),
+
+-- ==========================================
+-- TRICEPS
+-- ==========================================
+-- Pushdowns (36: Tricep Pushdown, 126: Single-Arm Pushdown, 127: Reverse Grip)
+(36, 126), (36, 127),
+(126, 36), (126, 127),
+(127, 36), (127, 126),
+
+-- Extensions (38: Skull Crusher, 125: French Press, 132: Lying Tricep Extension)
+(38, 125), (38, 132),
+(125, 38), (125, 132),
+(132, 38), (132, 125),
+
+-- ==========================================
+-- BICEPS
+-- ==========================================
+-- Standard Curls (41: BB Curl, 42: DB Curl, 45: Cable Curl, 141: EZ Bar Curl)
+(41, 42), (41, 45), (41, 141),
+(42, 41), (42, 45), (42, 141),
+(45, 41), (45, 42), (45, 141),
+(141, 41), (141, 42), (141, 45);
