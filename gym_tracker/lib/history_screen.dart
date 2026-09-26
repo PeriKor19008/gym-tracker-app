@@ -10,14 +10,12 @@ class HistoryScreen extends StatefulWidget {
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
-  List<Map<String, dynamic>> _sessions = [];
-  Map<String, dynamic> _analytics = {'tonnage': [], 'muscles': [], 'consistency': []};
-  bool _isLoading = true;
+  List<Map<String, dynamic>> _allSessions = []; // Stores the raw DB data
+  List<Map<String, dynamic>> _sessions = []; // Used for the Ledger
+  List<Map<String, dynamic>> _weeklyStats = []; // Used for the Stats charts
 
-  final List<Color> _pieColors = [
-    Colors.teal, Colors.blueAccent, Colors.deepPurpleAccent,
-    Colors.orange, Colors.redAccent, Colors.green, Colors.pinkAccent
-  ];
+  bool _isLoading = true;
+  int _chartResolution = 12; // Default to 12 weeks. 0 means "All Time"
 
   @override
   void initState() {
@@ -27,244 +25,147 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Future<void> _loadData() async {
     final sessionData = await DatabaseHelper.instance.getWorkoutHistory();
-    final analyticsData = await DatabaseHelper.instance.getMacroAnalytics();
 
-    setState(() {
-      _sessions = sessionData;
-      _analytics = analyticsData;
-      _isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        _allSessions = sessionData;
+        _sessions = sessionData;
+        _processChartData(); // Process the math based on the current resolution
+        _isLoading = false;
+      });
+    }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Progression & Logs'),
-          elevation: 0,
-          bottom: const TabBar(
-            indicatorColor: Colors.teal,
-            tabs: [
-              Tab(icon: Icon(Icons.insights), text: 'General View'),
-              Tab(icon: Icon(Icons.history), text: 'Workout Logs'),
-            ],
-          ),
-        ),
-        body: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: Colors.teal))
-            : TabBarView(
-          children: [
-            _buildAnalyticsTab(),
-            _buildLogsTab(),
-          ],
-        ),
-      ),
-    );
-  }
+  // Instantly recalculates chart data in memory without hitting the database
+  void _processChartData() {
+    Map<DateTime, int> weeklyCounts = {};
+    Map<DateTime, double> weeklyTonnage = {};
 
-  // ==========================================
-  // TAB 1: ANALYTICS WIDGETS
-  // ==========================================
-  Widget _buildAnalyticsTab() {
-    if (_sessions.isEmpty) {
-      return const Center(child: Text('No data yet. Complete a workout to see analytics!', style: TextStyle(color: Colors.grey)));
+    for (var session in _allSessions) {
+      try {
+        DateTime date = DateTime.parse(session['start_time']);
+        DateTime monday = DateTime(date.year, date.month, date.day).subtract(Duration(days: date.weekday - 1));
+
+        weeklyCounts[monday] = (weeklyCounts[monday] ?? 0) + 1;
+
+        double sessionTonnage = double.tryParse(session['total_tonnage']?.toString() ?? '0') ?? 0.0;
+        weeklyTonnage[monday] = (weeklyTonnage[monday] ?? 0.0) + sessionTonnage;
+      } catch (e) {
+        debugPrint("Error parsing date: $e");
+      }
     }
 
-    return ListView(
-      padding: const EdgeInsets.all(16.0),
-      children: [
-        _buildConsistencyChart(),
-        const SizedBox(height: 24),
-        _buildTonnageChart(),
-        const SizedBox(height: 24),
-        _buildMusclePieChart(),
-        const SizedBox(height: 40),
-      ],
-    );
-  }
+    List<Map<String, dynamic>> weeklyData = [];
+    var sortedWeeks = weeklyCounts.keys.toList()..sort();
 
-  Widget _buildConsistencyChart() {
-    List<Map<String, dynamic>> data = _analytics['consistency'] ?? [];
-    if (data.isEmpty) return const SizedBox();
-
-    List<BarChartGroupData> barGroups = [];
-    for (int i = 0; i < data.length; i++) {
-      barGroups.add(
-        BarChartGroupData(
-          x: i,
-          barRods: [
-            BarChartRodData(
-              toY: (data[i]['workout_count'] as int).toDouble(),
-              color: Colors.blueAccent,
-              width: 16,
-              borderRadius: BorderRadius.circular(4),
-            )
-          ],
-        ),
-      );
+    // Slice the data based on the selected dropdown resolution
+    if (_chartResolution > 0 && sortedWeeks.length > _chartResolution) {
+      sortedWeeks = sortedWeeks.sublist(sortedWeeks.length - _chartResolution);
     }
 
-    return Card(
-      color: Colors.grey[900],
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Consistency (Workouts / Month)', style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 24),
-            SizedBox(
-              height: 200,
-              child: BarChart(
-                BarChartData(
-                  gridData: const FlGridData(show: false),
-                  borderData: FlBorderData(show: false),
-                  titlesData: FlTitlesData(
-                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        getTitlesWidget: (value, meta) {
-                          int index = value.toInt();
-                          if (index >= 0 && index < data.length) {
-                            String month = data[index]['month'].toString().split('-').last;
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 8.0),
-                              child: Text(month, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                            );
-                          }
-                          return const Text('');
-                        },
-                      ),
-                    ),
-                  ),
-                  barGroups: barGroups,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTonnageChart() {
-    List<Map<String, dynamic>> data = _analytics['tonnage'] ?? [];
-    if (data.isEmpty) return const SizedBox();
-
-    List<FlSpot> spots = [];
-    for (int i = 0; i < data.length; i++) {
-      spots.add(FlSpot(i.toDouble(), (data[i]['tonnage'] as num).toDouble()));
+    for (var week in sortedWeeks) {
+      weeklyData.add({
+        'week_label_date': week.toIso8601String(),
+        'workout_count': weeklyCounts[week],
+        'total_tonnage': weeklyTonnage[week],
+      });
     }
 
-    return Card(
-      color: Colors.grey[900],
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Total Tonnage per Session (kg/lbs)', style: TextStyle(color: Colors.teal, fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 24),
-            SizedBox(
-              height: 200,
-              child: LineChart(
-                LineChartData(
-                  gridData: const FlGridData(show: false),
-                  borderData: FlBorderData(show: false),
-                  titlesData: const FlTitlesData(
-                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  ),
-                  lineBarsData: [
-                    LineChartBarData(
-                      spots: spots,
-                      isCurved: true,
-                      color: Colors.teal,
-                      barWidth: 4,
-                      isStrokeCapRound: true,
-                      dotData: const FlDotData(show: false),
-                      belowBarData: BarAreaData(show: true, color: Colors.teal.withOpacity(0.15)),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    _weeklyStats = weeklyData;
   }
 
-  Widget _buildMusclePieChart() {
-    List<Map<String, dynamic>> data = _analytics['muscles'] ?? [];
-    if (data.isEmpty) return const SizedBox();
-
-    List<PieChartSectionData> pieSections = List.generate(data.length, (i) {
-      return PieChartSectionData(
-        color: _pieColors[i % _pieColors.length],
-        value: (data[i]['set_count'] as int).toDouble(),
-        title: data[i]['muscle'],
-        radius: 60,
-        titleStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
-      );
-    });
-
-    return Card(
-      color: Colors.grey[900],
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Muscle Group Focus (Total Sets)', style: TextStyle(color: Colors.deepPurpleAccent, fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 24),
-            SizedBox(
-              height: 200,
-              child: PieChart(
-                PieChartData(
-                  sections: pieSections,
-                  centerSpaceRadius: 40,
-                  sectionsSpace: 2,
-                ),
-              ),
-            ),
-          ],
-        ),
+  // ==========================================
+  // SHARED DROPDOWN WIDGET
+  // ==========================================
+  Widget _buildResolutionDropdown() {
+    return Container(
+      height: 32,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: Colors.grey[850],
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: DropdownButton<int>(
+        value: _chartResolution,
+        dropdownColor: Colors.grey[900],
+        icon: const Icon(Icons.arrow_drop_down, color: Colors.teal, size: 20),
+        underline: const SizedBox(), // Removes the default ugly underline
+        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+        items: const [
+          DropdownMenuItem(value: 4, child: Text('4 Weeks')),
+          DropdownMenuItem(value: 12, child: Text('12 Weeks')),
+          DropdownMenuItem(value: 24, child: Text('24 Weeks')),
+          DropdownMenuItem(value: 0, child: Text('All Time')),
+        ],
+        onChanged: (value) {
+          if (value != null) {
+            setState(() {
+              _chartResolution = value;
+              _processChartData(); // Instantly update the UI
+            });
+          }
+        },
       ),
     );
   }
 
   // ==========================================
-  // TAB 2: LOGS LIST
+  // TAB 1: THE LEDGER
   // ==========================================
-  Widget _buildLogsTab() {
+  Widget _buildGroupedHistory() {
     if (_sessions.isEmpty) {
       return const Center(child: Text('No workouts logged yet.', style: TextStyle(color: Colors.grey)));
     }
 
-    return ListView.builder(
-      itemCount: _sessions.length,
-      itemBuilder: (context, index) {
-        final session = _sessions[index];
-        // --- debug ---
-        print("Session Map Keys: ${session.keys}");
-        print("Session Full Data: $session");
-        // -------------------------
-        DateTime date = DateTime.parse(session['start_time']);
-        String formattedDate = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} at ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-        int sessionId = int.tryParse(session['session_id']?.toString() ?? '0') ?? 0;
+    List<Widget> listItems = [];
+    String lastDateString = '';
+    int dayGroupIndex = -1;
 
-        return Card(
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          color: Colors.grey[900],
+    final Color colorX = const Color(0xFF1C1C1C);
+    final Color colorY = const Color(0xFF2A2A2A);
+
+    for (var session in _sessions) {
+      DateTime date = DateTime.parse(session['start_time']);
+      String dateString = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      String timeString = '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+
+      if (dateString != lastDateString) {
+        dayGroupIndex++;
+        lastDateString = dateString;
+
+        listItems.add(
+            Padding(
+              padding: const EdgeInsets.only(left: 16, top: 24, bottom: 8, right: 16),
+              child: Row(
+                children: [
+                  const Icon(Icons.calendar_today, color: Colors.teal, size: 14),
+                  const SizedBox(width: 8),
+                  Text(
+                    dateString,
+                    style: const TextStyle(color: Colors.teal, fontWeight: FontWeight.bold, fontSize: 14, letterSpacing: 1.2),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(child: Divider(color: Colors.grey[800])),
+                ],
+              ),
+            )
+        );
+      }
+
+      Color cardColor = (dayGroupIndex % 2 == 0) ? colorX : colorY;
+      int sessionId = int.tryParse(session['session_id']?.toString() ?? '0') ?? 0;
+
+      bool isProgram = session['program_name'] != null;
+      String programDisplay = isProgram
+          ? '${session['program_name']} • ${session['day_name']}'
+          : 'Ad-Hoc Workout';
+      Color programColor = isProgram ? Colors.deepPurpleAccent : Colors.grey;
+      IconData programIcon = isProgram ? Icons.view_timeline : Icons.play_circle_outline;
+
+      listItems.add(
+        Card(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          color: cardColor,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: InkWell(
             borderRadius: BorderRadius.circular(12),
@@ -274,7 +175,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 MaterialPageRoute(
                   builder: (context) => SessionDetailScreen(
                     sessionId: sessionId,
-                    formattedDate: formattedDate,
+                    formattedDate: '$dateString at $timeString',
                   ),
                 ),
               );
@@ -287,12 +188,26 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(formattedDate, style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 16)),
+                      Text(timeString, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(color: Colors.teal.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(color: Colors.teal.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
                         child: Text('${session['exercise_count']} Exercises', style: const TextStyle(color: Colors.teal, fontSize: 12, fontWeight: FontWeight.bold)),
                       )
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(programIcon, color: programColor, size: 14),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          programDisplay,
+                          style: TextStyle(color: programColor, fontWeight: FontWeight.w600, fontSize: 13),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -301,8 +216,231 @@ class _HistoryScreenState extends State<HistoryScreen> {
               ),
             ),
           ),
-        );
-      },
+        ),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 24),
+      children: listItems,
+    );
+  }
+
+  // ==========================================
+  // TAB 2: GLOBAL STATS
+  // ==========================================
+  Widget _buildStatsTab() {
+    if (_weeklyStats.isEmpty) {
+      return const Center(child: Text('No data yet.', style: TextStyle(color: Colors.grey)));
+    }
+
+    double maxWorkouts = 0;
+    List<BarChartGroupData> barGroups = [];
+
+    double minTonnage = double.infinity;
+    double maxTonnage = 0;
+    List<FlSpot> tonnageSpots = [];
+
+    for (int i = 0; i < _weeklyStats.length; i++) {
+      double count = (_weeklyStats[i]['workout_count'] as num).toDouble();
+      if (count > maxWorkouts) maxWorkouts = count;
+      barGroups.add(
+        BarChartGroupData(
+            x: i,
+            barRods: [BarChartRodData(toY: count, color: Colors.blueAccent, width: 16, borderRadius: BorderRadius.circular(4))]
+        ),
+      );
+
+      double ton = (_weeklyStats[i]['total_tonnage'] as num).toDouble();
+      if (ton < minTonnage) minTonnage = ton;
+      if (ton > maxTonnage) maxTonnage = ton;
+      tonnageSpots.add(FlSpot(i.toDouble(), ton));
+    }
+
+    if (minTonnage == double.infinity) minTonnage = 0;
+
+    return ListView(
+      padding: const EdgeInsets.all(16.0),
+      children: [
+
+        // --- 1. TOTAL TONNAGE CHART ---
+        Card(
+          color: const Color(0xFF1C1C1C),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Training Volume', style: TextStyle(color: Colors.teal, fontWeight: FontWeight.bold, fontSize: 16)),
+                    _buildResolutionDropdown(),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  height: 220,
+                  child: LineChart(
+                    LineChartData(
+                      minY: minTonnage * 0.8,
+                      maxY: maxTonnage * 1.1,
+                      gridData: FlGridData(
+                          show: true,
+                          drawVerticalLine: false,
+                          getDrawingHorizontalLine: (value) => FlLine(color: Colors.grey[850], strokeWidth: 1)
+                      ),
+                      borderData: FlBorderData(show: false),
+                      titlesData: FlTitlesData(
+                        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 35,
+                            getTitlesWidget: (value, meta) {
+                              int index = value.toInt();
+                              if (index >= 0 && index < _weeklyStats.length) {
+                                DateTime parsed = DateTime.parse(_weeklyStats[index]['week_label_date']);
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 8.0),
+                                  child: Text('${parsed.day}/${parsed.month}', style: const TextStyle(color: Colors.grey, fontSize: 10)),                                );
+                              }
+                              return const Text('');
+                            },
+                          ),
+                        ),
+                      ),
+                      lineBarsData: [
+                        LineChartBarData(
+                          spots: tonnageSpots,
+                          isCurved: true,
+                          color: Colors.teal,
+                          barWidth: 3,
+                          isStrokeCapRound: true,
+                          dotData: FlDotData(
+                              show: true,
+                              getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(
+                                  radius: 4, color: Colors.teal, strokeWidth: 2, strokeColor: const Color(0xFF1C1C1C)
+                              )
+                          ),
+                          belowBarData: BarAreaData(show: true, color: Colors.teal.withOpacity(0.15)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 24),
+
+        // --- 2. CONSISTENCY CHART ---
+        Card(
+          color: const Color(0xFF1C1C1C),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Workouts Per Week', style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 16)),
+                    _buildResolutionDropdown(),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  height: 220,
+                  child: BarChart(
+                    BarChartData(
+                      maxY: maxWorkouts == 0 ? 7 : maxWorkouts * 1.3,
+                      gridData: FlGridData(
+                          show: true,
+                          drawVerticalLine: false,
+                          getDrawingHorizontalLine: (value) => FlLine(color: Colors.grey[850], strokeWidth: 1)
+                      ),
+                      borderData: FlBorderData(show: false),
+                      titlesData: FlTitlesData(
+                        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        leftTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 30,
+                            getTitlesWidget: (value, meta) {
+                              if (value % 1 == 0) {
+                                return Text(value.toInt().toString(), style: const TextStyle(color: Colors.grey, fontSize: 11));
+                              }
+                              return const Text('');
+                            },
+                          ),
+                        ),
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 35,
+                            getTitlesWidget: (value, meta) {
+                              int index = value.toInt();
+                              if (index >= 0 && index < _weeklyStats.length) {
+                                DateTime parsed = DateTime.parse(_weeklyStats[index]['week_label_date']);
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 8.0),
+                                  child: Text('${parsed.day}/${parsed.month}', style: const TextStyle(color: Colors.grey, fontSize: 10)),                                );
+                              }
+                              return const Text('');
+                            },
+                          ),
+                        ),
+                      ),
+                      barGroups: barGroups,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: const Color(0xFF121212),
+        appBar: AppBar(
+          title: const Text('Workout History', style: TextStyle(fontWeight: FontWeight.bold)),
+          elevation: 0,
+          centerTitle: true,
+          backgroundColor: const Color(0xFF1C1C1C),
+          bottom: const TabBar(
+            indicatorColor: Colors.teal,
+            labelColor: Colors.teal,
+            unselectedLabelColor: Colors.grey,
+            tabs: [
+              Tab(icon: Icon(Icons.list_alt), text: 'Ledger'),
+              Tab(icon: Icon(Icons.bar_chart), text: 'Stats'),
+            ],
+          ),
+        ),
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator(color: Colors.teal))
+            : TabBarView(
+          children: [
+            _buildGroupedHistory(),
+            _buildStatsTab(),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -319,10 +457,11 @@ class SessionDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
-        title: Text(formattedDate),
+        title: Text(formattedDate, style: const TextStyle(fontSize: 16)),
         elevation: 0,
+        backgroundColor: Colors.transparent,
       ),
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: DatabaseHelper.instance.getSessionDetails(sessionId),
@@ -345,7 +484,7 @@ class SessionDetailScreen extends StatelessWidget {
               final List sets = ex['sets'];
 
               return Card(
-                color: Colors.grey[900],
+                color: const Color(0xFF1C1C1C),
                 margin: const EdgeInsets.only(bottom: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 child: Padding(
@@ -355,10 +494,10 @@ class SessionDetailScreen extends StatelessWidget {
                     children: [
                       Text(
                         exerciseName,
-                        style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                        style: const TextStyle(color: Colors.blueAccent, fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 12),
-                      const Divider(color: Colors.grey),
+                      const Divider(color: Colors.grey, height: 1),
                       const SizedBox(height: 8),
                       ...sets.map<Widget>((s) {
                         int setNum = s['set_number'];
@@ -366,11 +505,11 @@ class SessionDetailScreen extends StatelessWidget {
                         int reps = int.tryParse(s['reps'].toString()) ?? 0;
 
                         return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4.0),
+                          padding: const EdgeInsets.symmetric(vertical: 6.0),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text('Set $setNum', style: const TextStyle(color: Colors.grey)),
+                              Text('Set $setNum', style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)),
                               Text('${weight.toStringAsFixed(1)} kg × $reps reps',
                                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                             ],

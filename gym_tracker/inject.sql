@@ -1,0 +1,9 @@
+BEGIN TRANSACTION;
+DELETE FROM Sets;
+DELETE FROM Session_Exercises;
+DELETE FROM Sessions;
+DELETE FROM Program_Day_Exercises;
+DELETE FROM Program_Days;
+DELETE FROM Program_Weeks;
+DELETE FROM Programs;
+COMMIT;

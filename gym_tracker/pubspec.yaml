@@ -39,11 +39,12 @@ dependencies:
   path: ^1.9.1
   fl_chart: ^1.2.0
   flutter_ringtone_player: ^4.0.0+4
+  flutter_foreground_task: ^8.1.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_foreground_task: ^8.1.0
+
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

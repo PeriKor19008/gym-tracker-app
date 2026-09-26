@@ -8,6 +8,7 @@ import 'exercise_details_screen.dart';
 import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 import 'workout_foreground_task.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:flutter/cupertino.dart';
 
 
 // Data model for a single set
@@ -59,7 +60,9 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
     if (widget.sessionId != null) {
       _loadRoutineExercises();
     }
+
   }
+
 
   // --- NEW: Clean up the timer when leaving the screen ---
   @override
@@ -73,17 +76,17 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   void _initForegroundTask() {
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
-        channelId: 'gym_tracker_rest_timer',
+        channelId: 'gym_tracker_rest_timer_v4', // <-- v4 forces the OS to apply the new rules
         channelName: 'Workout Rest Timer',
         channelDescription: 'Active rest timer running in background',
-        channelImportance: NotificationChannelImportance.LOW,
-        priority: NotificationPriority.LOW,
+        channelImportance: NotificationChannelImportance.DEFAULT, // <-- DEFAULT stops the big pop-down banner
+        priority: NotificationPriority.DEFAULT,                   // <-- DEFAULT keeps the small status bar icon
       ),
       iosNotificationOptions: const IOSNotificationOptions(
         showNotification: true,
         playSound: false,
       ),
-      foregroundTaskOptions:  ForegroundTaskOptions(
+      foregroundTaskOptions: ForegroundTaskOptions(
         eventAction: ForegroundTaskEventAction.repeat(1000),
         autoRunOnBoot: false,
         allowWakeLock: true,
@@ -257,6 +260,38 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
     });
   }
 
+  void _confirmRemoveExercise(int index) {
+    showDialog(
+      context: context,
+      builder: (BuildContext ctx) {
+        return AlertDialog(
+          backgroundColor: Colors.grey[900],
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: const Text('Remove Exercise?', style: TextStyle(color: Colors.white)),
+          content: const Text(
+            'Are you sure you want to remove this exercise from your current workout?',
+            style: TextStyle(color: Colors.grey),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
+            ),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _workoutExercises.removeAt(index);
+                });
+                Navigator.pop(ctx);
+              },
+              child: const Text('REMOVE', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   // --- NEW: Timer Logic Methods ---
   void _startTimer() {
     if (_restTimer != null) _restTimer!.cancel();
@@ -320,6 +355,72 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
     int s = totalSeconds % 60;
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
+
+  void _showTimerPicker() {
+    // Pause the timer while the user is adjusting it
+    bool wasRunning = _isTimerRunning;
+    if (wasRunning) _stopTimer();
+
+    int selectedMinutes = _restSeconds ~/ 60;
+    int selectedSeconds = _restSeconds % 60;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.grey[900],
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext builder) {
+        return SizedBox(
+          height: 300,
+          child: Column(
+            children: [
+              // Header with Title and Done button
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Set Rest Timer', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _restSeconds = (selectedMinutes * 60) + selectedSeconds;
+                          _baseRestSeconds = _restSeconds; // Remember this as the new default
+                        });
+                        Navigator.pop(context);
+                        if (wasRunning && _restSeconds > 0) _startTimer(); // Resume if it was running
+                      },
+                      child: const Text('DONE', style: TextStyle(color: Colors.teal, fontWeight: FontWeight.bold)),
+                    )
+                  ],
+                ),
+              ),
+              // The Spinning Cupertino Wheel
+              Expanded(
+                child: CupertinoTheme(
+                  data: const CupertinoThemeData(
+                    textTheme: CupertinoTextThemeData(
+                      pickerTextStyle: TextStyle(color: Colors.white, fontSize: 22),
+                    ),
+                  ),
+                  child: CupertinoTimerPicker(
+                    mode: CupertinoTimerPickerMode.ms,
+                    initialTimerDuration: Duration(seconds: _restSeconds),
+                    onTimerDurationChanged: (Duration newDuration) {
+                      selectedMinutes = newDuration.inMinutes;
+                      selectedSeconds = newDuration.inSeconds % 60;
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   // --------------------------------
 
   Future<void> _loadRoutineExercises() async {
@@ -465,13 +566,23 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
               onPressed: () => _resetTimer(_baseRestSeconds),
               child: const Text('RESET', style: TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold)),
             ),
-            Text(
-              _formatTime(_restSeconds),
-              style: TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-                // Glows teal when running
-                color: _isTimerRunning ? Colors.tealAccent : Colors.white,
+            GestureDetector(
+              onTap: _showTimerPicker, // <--- Triggers the pop-up wheel
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.grey[800], // Subtle background to indicate it's tappable
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _formatTime(_restSeconds),
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    // Glows teal when running
+                    color: _isTimerRunning ? Colors.tealAccent : Colors.white,
+                  ),
+                ),
               ),
             ),
             TextButton(
@@ -542,6 +653,11 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                         );
                       },
                     ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                      tooltip: 'Remove Exercise',
+                      onPressed: () => _confirmRemoveExercise(exerciseIndex),
+                    ),
                   ],
                 ),
               ],
@@ -582,71 +698,88 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
 
             ...List.generate(activeExercise.sets.length, (setIndex) {
               final workoutSet = activeExercise.sets[setIndex];
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4.0),
-                child: Row(
-                  children: [
-                    SizedBox(width: 40, child: Text('${setIndex + 1}', style: const TextStyle(fontWeight: FontWeight.bold))),
-                    Expanded(
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 8),
-                        child: TextField(
-                          controller: workoutSet.weightController,
-                          focusNode: workoutSet.weightFocusNode,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          textInputAction: TextInputAction.next,
-                          textAlign: TextAlign.center,
-                          decoration: InputDecoration(
-                            filled: true,
-                            fillColor: workoutSet.isCompleted ? Colors.green.withOpacity(0.1) : Colors.grey[800],
-                            contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+
+              return Dismissible(
+                // ObjectKey ensures Flutter tracks this specific set perfectly during deletion
+                key: ObjectKey(workoutSet),
+                direction: DismissDirection.endToStart,
+                background: Container(
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                  decoration: BoxDecoration(
+                    color: Colors.redAccent,
+                    borderRadius: BorderRadius.circular(8), // Matches the textfield curves
+                  ),
+                  child: const Icon(Icons.delete, color: Colors.white),
+                ),
+                onDismissed: (direction) {
+                  setState(() {
+                    activeExercise.sets.removeAt(setIndex);
+                  });
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4.0),
+                  child: Row(
+                    children: [
+                      SizedBox(width: 40, child: Text('${setIndex + 1}', style: const TextStyle(fontWeight: FontWeight.bold))),
+                      Expanded(
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 8),
+                          child: TextField(
+                            controller: workoutSet.weightController,
+                            focusNode: workoutSet.weightFocusNode,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            textInputAction: TextInputAction.next,
+                            textAlign: TextAlign.center,
+                            decoration: InputDecoration(
+                              filled: true,
+                              fillColor: workoutSet.isCompleted ? Colors.green.withOpacity(0.1) : Colors.grey[800],
+                              contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    Expanded(
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 8),
-                        child: TextField(
-                          controller: workoutSet.repsController,
-                          focusNode: workoutSet.repsFocusNode,
-                          keyboardType: TextInputType.number,
-                          textInputAction: TextInputAction.done,
-                          onSubmitted: (value) {
+                      Expanded(
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 8),
+                          child: TextField(
+                            controller: workoutSet.repsController,
+                            focusNode: workoutSet.repsFocusNode,
+                            keyboardType: TextInputType.number,
+                            textInputAction: TextInputAction.done,
+                            onSubmitted: (value) {
+                              setState(() {
+                                workoutSet.isCompleted = true;
+                              });
+                              FocusScope.of(context).unfocus();
+                            },
+                            textAlign: TextAlign.center,
+                            decoration: InputDecoration(
+                              filled: true,
+                              fillColor: workoutSet.isCompleted ? Colors.green.withOpacity(0.1) : Colors.grey[800],
+                              contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: 48,
+                        child: IconButton(
+                          icon: Icon(
+                            workoutSet.isCompleted ? Icons.check_box : Icons.check_box_outline_blank,
+                            color: workoutSet.isCompleted ? Colors.green : Colors.grey,
+                          ),
+                          onPressed: () {
                             setState(() {
-                              workoutSet.isCompleted = true; // <--- Automatically ticks the completed box
+                              workoutSet.isCompleted = !workoutSet.isCompleted;
                             });
-                            FocusScope.of(context).unfocus(); // <--- Closes the keyboard
                           },
-                          textAlign: TextAlign.center,
-                          decoration: InputDecoration(
-                            filled: true,
-                            fillColor: workoutSet.isCompleted ? Colors.green.withOpacity(0.1) : Colors.grey[800],
-                            contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                          ),
                         ),
                       ),
-                    ),
-                    SizedBox(
-                      width: 48,
-                      child: IconButton(
-                        icon: Icon(
-                          workoutSet.isCompleted ? Icons.check_box : Icons.check_box_outline_blank,
-                          color: workoutSet.isCompleted ? Colors.green : Colors.grey,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            workoutSet.isCompleted = !workoutSet.isCompleted;
-
-
-                            }
-                          );
-                        },
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               );
             }),

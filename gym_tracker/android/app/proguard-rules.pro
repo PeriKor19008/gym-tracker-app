@@ -1,0 +1,1 @@
+-keep class com.pravera.flutter_foreground_task.** { *; }
