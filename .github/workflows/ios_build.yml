@@ -19,24 +19,23 @@ jobs:
         run: flutter pub get
         working-directory: gym_tracker
 
-      # NEW STEP: Hacks the Xcode project to stop looking for an Apple ID
-      - name: Disable Automatic Provisioning & Code Signing
+      - name: Prepare iOS files (Ignore Xcode signing error)
         working-directory: gym_tracker
-        run: |
-          sed -i '' 's/ProvisioningStyle = Automatic;/ProvisioningStyle = Manual;/g' ios/Runner.xcodeproj/project.pbxproj
-          echo "CODE_SIGNING_REQUIRED=NO" >> ios/Flutter/Release.xcconfig
-          echo "CODE_SIGNING_ALLOWED=NO" >> ios/Flutter/Release.xcconfig
-          echo "CODE_SIGN_IDENTITY=" >> ios/Flutter/Release.xcconfig
+        # Flutter prepares the app but crashes at the Xcode signing phase.
+        # Adding "|| true" forces GitHub to ignore the crash and keep going!
+        run: flutter build ios --release --no-codesign || true
 
-      - name: Build unsigned iOS app
-        run: flutter build ios --release --no-codesign
-        working-directory: gym_tracker
+      - name: Force Unsigned Xcode Build
+        working-directory: gym_tracker/ios
+        # We take over from Flutter and force Xcode to build using absolute overrides.
+        run: xcodebuild -workspace Runner.xcworkspace -scheme Runner -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" SYMROOT="$(PWD)/../build/ios" build
 
       - name: Package into IPA file
         working-directory: gym_tracker
         run: |
           mkdir -p build/ios/iphoneos/Payload
-          mv build/ios/iphoneos/Runner.app build/ios/iphoneos/Payload/
+          # xcodebuild outputs to the Release-iphoneos folder, so we grab it from there
+          mv build/ios/Release-iphoneos/Runner.app build/ios/iphoneos/Payload/
           cd build/ios/iphoneos
           zip -r GymTracker.ipa Payload
 
