@@ -212,170 +212,171 @@ class _DashboardScreenState extends State<DashboardScreen> {
           IconButton(
             icon: const Icon(Icons.bug_report, color: Colors.orange),
             tooltip: 'Developer Tools',
-            onPressed: () {
-              bool extractData = false;
-              bool extractAllData = false;
-              bool clearHistory = false;
-              bool clearPrograms = false; // NEW STATE VARIABLE
-              bool seedData = false;
-
-              showDialog(
-                context: context,
-                builder: (context) {
-                  return StatefulBuilder(
-                    builder: (context, setDialogState) {
-                      return AlertDialog(
-                        backgroundColor: Colors.grey[900],
-                        title: const Row(
-                          children: [
-                            Icon(Icons.settings_applications, color: Colors.orange),
-                            SizedBox(width: 8),
-                            Text('Developer Tools', style: TextStyle(color: Colors.white)),
-                          ],
-                        ),
-                        content: SingleChildScrollView(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              CheckboxListTile(
-                                title: const Text('Extract Templates (SQL)', style: TextStyle(color: Colors.white, fontSize: 15)),
-                                subtitle: const Text('Export exercises & programs to Downloads', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                                value: extractData,
-                                activeColor: Colors.teal,
-                                checkColor: Colors.white,
-                                contentPadding: EdgeInsets.zero,
-                                onChanged: (bool? value) => setDialogState(() => extractData = value ?? false),
-                              ),
-                              CheckboxListTile(
-                                title: const Text('Full Backup (.db)', style: TextStyle(color: Colors.white, fontSize: 15)),
-                                subtitle: const Text('Export the entire database file to Downloads', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                                value: extractAllData,
-                                activeColor: Colors.blueAccent,
-                                checkColor: Colors.white,
-                                contentPadding: EdgeInsets.zero,
-                                onChanged: (bool? value) => setDialogState(() => extractAllData = value ?? false),
-                              ),
-                              CheckboxListTile(
-                                title: const Text('Clear Workout History', style: TextStyle(color: Colors.white, fontSize: 15)),
-                                subtitle: const Text('Wipe all past sessions, sets, and logs', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                                value: clearHistory,
-                                activeColor: Colors.redAccent,
-                                checkColor: Colors.white,
-                                contentPadding: EdgeInsets.zero,
-                                onChanged: (bool? value) => setDialogState(() => clearHistory = value ?? false),
-                              ),
-                              // --- NEW CHECKBOX FOR CLEARING PROGRAMS ---
-                              CheckboxListTile(
-                                title: const Text('Clear All Programs', style: TextStyle(color: Colors.white, fontSize: 15)),
-                                subtitle: const Text('Delete all custom programs and templates', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                                value: clearPrograms,
-                                activeColor: Colors.redAccent,
-                                checkColor: Colors.white,
-                                contentPadding: EdgeInsets.zero,
-                                onChanged: (bool? value) => setDialogState(() => clearPrograms = value ?? false),
-                              ),
-                              CheckboxListTile(
-                                title: const Text('Inject Mock Data', style: TextStyle(color: Colors.white, fontSize: 15)),
-                                subtitle: const Text('Add realistic past sessions for charts', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                                value: seedData,
-                                activeColor: Colors.teal,
-                                checkColor: Colors.white,
-                                contentPadding: EdgeInsets.zero,
-                                onChanged: (bool? value) => setDialogState(() => seedData = value ?? false),
-                              ),
-                            ],
-                          ),
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
-                          ),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
-                            onPressed: () async {
-                              Navigator.pop(context);
-                              List<String> executionLogs = [];
-
-                              try {
-                                if (extractData) {
-                                  String sqlExerciseExport = await DatabaseHelper.instance.exportCustomExercisesAsSql();
-                                  String sqlProgramsExport = await DatabaseHelper.instance.exportProgramsAsSql();
-                                  final exerciseFile = File('/storage/emulated/0/Download/custom_exercises_export.sql');
-                                  await exerciseFile.writeAsString(sqlExerciseExport);
-                                  final programsFile = File('/storage/emulated/0/Download/programs_export.sql');
-                                  await programsFile.writeAsString(sqlProgramsExport);
-                                  executionLogs.add('✅ Exercises backed up successfully!');
-                                  executionLogs.add('✅ Programs exported successfully!');
-                                }
-
-                                if (extractAllData) {
-                                  String result = await DatabaseHelper.instance.exportFullDatabase();
-                                  executionLogs.add(result);
-                                }
-
-                                if (clearHistory) executionLogs.add(await TestDataGenerator.clearHistoryData());
-
-                                // --- NEW EXECUTION LOGIC TO WIPE PROGRAMS ---
-                                if (clearPrograms) {
-                                  final db = await DatabaseHelper.instance.database;
-                                  await db.delete('Program_Day_Exercises');
-                                  await db.delete('Program_Days');
-                                  await db.delete('Program_Weeks');
-                                  await db.delete('Programs');
-                                  executionLogs.add('🗑️ All program templates deleted successfully!');
-                                }
-
-                                if (seedData) executionLogs.add(await TestDataGenerator.injectRealisticHistoryData());
-
-                                if (executionLogs.isNotEmpty && context.mounted) {
-                                  showDialog(
-                                    context: context,
-                                    builder: (context) => AlertDialog(
-                                      backgroundColor: Colors.grey[900],
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                      title: const Row(
-                                        children: [
-                                          Icon(Icons.check_circle, color: Colors.green),
-                                          SizedBox(width: 8),
-                                          Text('Execution Complete', style: TextStyle(color: Colors.white, fontSize: 18)),
-                                        ],
-                                      ),
-                                      content: SingleChildScrollView(
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: executionLogs.map((log) => Padding(
-                                            padding: const EdgeInsets.only(bottom: 8.0),
-                                            child: Text(log, style: const TextStyle(color: Colors.grey, fontSize: 13)),
-                                          )).toList(),
-                                        ),
-                                      ),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () {
-                                            Navigator.pop(context);
-                                            _loadRecentPrograms();
-                                          },
-                                          child: const Text('OK', style: TextStyle(color: Colors.teal, fontWeight: FontWeight.bold)),
-                                        )
-                                      ],
-                                    ),
-                                  );
-                                }
-                              } catch (e) {
-                                if (context.mounted) showAppErrorDialog(context, 'Execution Error', e);
-                              }
-                            },
-                            child: const Text('Execute', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                          ),
-                        ],
-                      );
-                    },
-                  );
-                },
-              );
-            },
+              onPressed: null,
+            // onPressed: () {
+            //   bool extractData = false;
+            //   bool extractAllData = false;
+            //   bool clearHistory = false;
+            //   bool clearPrograms = false; // NEW STATE VARIABLE
+            //   bool seedData = false;
+            //
+            //   showDialog(
+            //     context: context,
+            //     builder: (context) {
+            //       return StatefulBuilder(
+            //         builder: (context, setDialogState) {
+            //           return AlertDialog(
+            //             backgroundColor: Colors.grey[900],
+            //             title: const Row(
+            //               children: [
+            //                 Icon(Icons.settings_applications, color: Colors.orange),
+            //                 SizedBox(width: 8),
+            //                 Text('Developer Tools', style: TextStyle(color: Colors.white)),
+            //               ],
+            //             ),
+            //             content: SingleChildScrollView(
+            //               child: Column(
+            //                 mainAxisSize: MainAxisSize.min,
+            //                 children: [
+            //                   CheckboxListTile(
+            //                     title: const Text('Extract Templates (SQL)', style: TextStyle(color: Colors.white, fontSize: 15)),
+            //                     subtitle: const Text('Export exercises & programs to Downloads', style: TextStyle(color: Colors.grey, fontSize: 12)),
+            //                     value: extractData,
+            //                     activeColor: Colors.teal,
+            //                     checkColor: Colors.white,
+            //                     contentPadding: EdgeInsets.zero,
+            //                     onChanged: (bool? value) => setDialogState(() => extractData = value ?? false),
+            //                   ),
+            //                   CheckboxListTile(
+            //                     title: const Text('Full Backup (.db)', style: TextStyle(color: Colors.white, fontSize: 15)),
+            //                     subtitle: const Text('Export the entire database file to Downloads', style: TextStyle(color: Colors.grey, fontSize: 12)),
+            //                     value: extractAllData,
+            //                     activeColor: Colors.blueAccent,
+            //                     checkColor: Colors.white,
+            //                     contentPadding: EdgeInsets.zero,
+            //                     onChanged: (bool? value) => setDialogState(() => extractAllData = value ?? false),
+            //                   ),
+            //                   CheckboxListTile(
+            //                     title: const Text('Clear Workout History', style: TextStyle(color: Colors.white, fontSize: 15)),
+            //                     subtitle: const Text('Wipe all past sessions, sets, and logs', style: TextStyle(color: Colors.grey, fontSize: 12)),
+            //                     value: clearHistory,
+            //                     activeColor: Colors.redAccent,
+            //                     checkColor: Colors.white,
+            //                     contentPadding: EdgeInsets.zero,
+            //                     onChanged: (bool? value) => setDialogState(() => clearHistory = value ?? false),
+            //                   ),
+            //                   // --- NEW CHECKBOX FOR CLEARING PROGRAMS ---
+            //                   CheckboxListTile(
+            //                     title: const Text('Clear All Programs', style: TextStyle(color: Colors.white, fontSize: 15)),
+            //                     subtitle: const Text('Delete all custom programs and templates', style: TextStyle(color: Colors.grey, fontSize: 12)),
+            //                     value: clearPrograms,
+            //                     activeColor: Colors.redAccent,
+            //                     checkColor: Colors.white,
+            //                     contentPadding: EdgeInsets.zero,
+            //                     onChanged: (bool? value) => setDialogState(() => clearPrograms = value ?? false),
+            //                   ),
+            //                   CheckboxListTile(
+            //                     title: const Text('Inject Mock Data', style: TextStyle(color: Colors.white, fontSize: 15)),
+            //                     subtitle: const Text('Add realistic past sessions for charts', style: TextStyle(color: Colors.grey, fontSize: 12)),
+            //                     value: seedData,
+            //                     activeColor: Colors.teal,
+            //                     checkColor: Colors.white,
+            //                     contentPadding: EdgeInsets.zero,
+            //                     onChanged: (bool? value) => setDialogState(() => seedData = value ?? false),
+            //                   ),
+            //                 ],
+            //               ),
+            //             ),
+            //             actions: [
+            //               TextButton(
+            //                 onPressed: () => Navigator.pop(context),
+            //                 child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+            //               ),
+            //               ElevatedButton(
+            //                 style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
+            //                 onPressed: () async {
+            //                   Navigator.pop(context);
+            //                   List<String> executionLogs = [];
+            //
+            //                   try {
+            //                     if (extractData) {
+            //                       String sqlExerciseExport = await DatabaseHelper.instance.exportCustomExercisesAsSql();
+            //                       String sqlProgramsExport = await DatabaseHelper.instance.exportProgramsAsSql();
+            //                       final exerciseFile = File('/storage/emulated/0/Download/custom_exercises_export.sql');
+            //                       await exerciseFile.writeAsString(sqlExerciseExport);
+            //                       final programsFile = File('/storage/emulated/0/Download/programs_export.sql');
+            //                       await programsFile.writeAsString(sqlProgramsExport);
+            //                       executionLogs.add('✅ Exercises backed up successfully!');
+            //                       executionLogs.add('✅ Programs exported successfully!');
+            //                     }
+            //
+            //                     if (extractAllData) {
+            //                       String result = await DatabaseHelper.instance.exportFullDatabase();
+            //                       executionLogs.add(result);
+            //                     }
+            //
+            //                     if (clearHistory) executionLogs.add(await TestDataGenerator.clearHistoryData());
+            //
+            //                     // --- NEW EXECUTION LOGIC TO WIPE PROGRAMS ---
+            //                     if (clearPrograms) {
+            //                       final db = await DatabaseHelper.instance.database;
+            //                       await db.delete('Program_Day_Exercises');
+            //                       await db.delete('Program_Days');
+            //                       await db.delete('Program_Weeks');
+            //                       await db.delete('Programs');
+            //                       executionLogs.add('🗑️ All program templates deleted successfully!');
+            //                     }
+            //
+            //                     if (seedData) executionLogs.add(await TestDataGenerator.injectRealisticHistoryData());
+            //
+            //                     if (executionLogs.isNotEmpty && context.mounted) {
+            //                       showDialog(
+            //                         context: context,
+            //                         builder: (context) => AlertDialog(
+            //                           backgroundColor: Colors.grey[900],
+            //                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            //                           title: const Row(
+            //                             children: [
+            //                               Icon(Icons.check_circle, color: Colors.green),
+            //                               SizedBox(width: 8),
+            //                               Text('Execution Complete', style: TextStyle(color: Colors.white, fontSize: 18)),
+            //                             ],
+            //                           ),
+            //                           content: SingleChildScrollView(
+            //                             child: Column(
+            //                               mainAxisSize: MainAxisSize.min,
+            //                               crossAxisAlignment: CrossAxisAlignment.start,
+            //                               children: executionLogs.map((log) => Padding(
+            //                                 padding: const EdgeInsets.only(bottom: 8.0),
+            //                                 child: Text(log, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+            //                               )).toList(),
+            //                             ),
+            //                           ),
+            //                           actions: [
+            //                             TextButton(
+            //                               onPressed: () {
+            //                                 Navigator.pop(context);
+            //                                 _loadRecentPrograms();
+            //                               },
+            //                               child: const Text('OK', style: TextStyle(color: Colors.teal, fontWeight: FontWeight.bold)),
+            //                             )
+            //                           ],
+            //                         ),
+            //                       );
+            //                     }
+            //                   } catch (e) {
+            //                     if (context.mounted) showAppErrorDialog(context, 'Execution Error', e);
+            //                   }
+            //                 },
+            //                 child: const Text('Execute', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            //               ),
+            //             ],
+            //           );
+            //         },
+            //       );
+            //     },
+            //   );
+            // },
           )
         ],
       ),
